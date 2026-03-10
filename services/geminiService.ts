@@ -1,5 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 import { DashboardData, LiveMarketReport } from "../types";
 
 export interface SeoArticleResult {
@@ -20,6 +21,7 @@ export interface SeoArticleResult {
 
 // Always use named parameter for apiKey
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+const groq = new Groq({ apiKey: import.meta.env.VITE_GROQ_API_KEY, dangerouslyAllowBrowser: true });
 
 export const runAgenticReasoning = async (data: DashboardData, goal: string) => {
   const prompt = `
@@ -200,15 +202,13 @@ Requirements:
 - keywordDensity is float percentage (primary keyword occurrences / total words * 100)`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
     });
-    const text = response.text || '';
-    // Strip markdown fences if model wraps them anyway
-    const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/g, '').trim();
-    return JSON.parse(cleaned) as SeoArticleResult;
+    const text = response.choices[0]?.message?.content || '';
+    return JSON.parse(text) as SeoArticleResult;
   } catch (error) {
     console.error('SEO Blog generation failed:', error);
     throw error;
