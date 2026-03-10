@@ -2,9 +2,8 @@
 import React, { useState } from 'react';
 import { suggestSocialContent } from '../services/geminiService';
 import YoutubeAnalyzer from './YoutubeAnalyzer';
-import SeoArticleGenerator from './SeoArticleGenerator';
 
-type SocialTab = 'overview' | 'youtube' | 'seo-blog';
+type SocialTab = 'overview' | 'youtube';
 
 const SocialHubPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SocialTab>(
@@ -48,14 +47,6 @@ const SocialHubPanel: React.FC = () => {
           }`}
         >
           ▶️ YouTube
-        </button>
-        <button
-          onClick={() => handleTabChange('seo-blog')}
-          className={`flex items-center gap-1.5 px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-            activeTab === 'seo-blog' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          ✦ SEO Blog
         </button>
       </div>
 
@@ -171,8 +162,7 @@ const SocialHubPanel: React.FC = () => {
       {/* ── YouTube tab ───────────────────────────────────────────────────── */}
       {activeTab === 'youtube' && <YoutubeAnalyzer />}
 
-      {/* ── SEO Blog tab ──────────────────────────────────────────────────── */}
-      {activeTab === 'seo-blog' && <SeoArticleGenerator />}
+
     </div>
   );
 };
