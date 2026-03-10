@@ -8,10 +8,12 @@ function escapeRegex(s: string) {
 }
 
 function highlightKeywords(text: string, keywords: string[]): string {
-  if (!keywords.length) return text;
+  // Render **bold** markdown
+  let result = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  if (!keywords.length) return result;
   const sorted = [...keywords].sort((a, b) => b.length - a.length); // longest first
   const pattern = new RegExp(`(${sorted.map(escapeRegex).join('|')})`, 'gi');
-  return text.replace(
+  return result.replace(
     pattern,
     '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5 font-medium">$1</mark>'
   );
@@ -22,6 +24,7 @@ function highlightKeywords(text: string, keywords: string[]): string {
 function renderArticle(articleText: string, keywords: string[]): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let paraBuffer: string[] = [];
+  let listBuffer: string[] = [];
 
   const flushPara = (key: number) => {
     if (!paraBuffer.length) return;
@@ -38,10 +41,22 @@ function renderArticle(articleText: string, keywords: string[]): React.ReactNode
     paraBuffer = [];
   };
 
+  const flushList = (key: number) => {
+    if (!listBuffer.length) return;
+    nodes.push(
+      <ul key={`ul-${key}`} className="list-disc list-inside space-y-1 mb-4 text-slate-700 text-[15px]">
+        {listBuffer.map((item, idx) => (
+          <li key={idx} dangerouslySetInnerHTML={{ __html: highlightKeywords(item, keywords) }} />
+        ))}
+      </ul>
+    );
+    listBuffer = [];
+  };
+
   const lines = articleText.split('\n');
   lines.forEach((line, i) => {
     if (line.startsWith('## ')) {
-      flushPara(i);
+      flushPara(i); flushList(i);
       nodes.push(
         <h2
           key={`h2-${i}`}
@@ -51,19 +66,24 @@ function renderArticle(articleText: string, keywords: string[]): React.ReactNode
         </h2>
       );
     } else if (line.startsWith('### ')) {
-      flushPara(i);
+      flushPara(i); flushList(i);
       nodes.push(
         <h3 key={`h3-${i}`} className="text-base font-semibold text-slate-800 mt-5 mb-2">
           {line.slice(4)}
         </h3>
       );
     } else if (line.trim() === '') {
+      flushPara(i); flushList(i);
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
       flushPara(i);
+      listBuffer.push(line.slice(2));
     } else {
+      flushList(i);
       paraBuffer.push(line);
     }
   });
   flushPara(lines.length);
+  flushList(lines.length);
   return nodes;
 }
 
