@@ -324,24 +324,42 @@ const AiVisibilityTab: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-5 py-3 text-right">
-                          {row.mentioned && (
-                            <button
-                              onClick={() => setExpanded(expanded === (row.id ?? '') ? null : (row.id ?? ''))}
-                              className="text-indigo-600 hover:text-indigo-800 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition-colors"
-                            >
-                              {expanded === (row.id ?? '') ? 'Close' : 'Context'}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setExpanded(expanded === (row.id ?? '') ? null : (row.id ?? ''))}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                              expanded === (row.id ?? '')
+                                ? 'bg-slate-200 text-slate-700'
+                                : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-800'
+                            }`}
+                          >
+                            {expanded === (row.id ?? '') ? 'Close' : 'View AI Response'}
+                          </button>
                         </td>
                       </tr>
                       {expanded === (row.id ?? '') && (
                         <tr>
                           <td colSpan={6} className="px-5 py-4 bg-slate-50 border-b border-slate-200">
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                              <p className="text-xs font-bold text-slate-400 uppercase mb-2">AI Response Context</p>
-                              <p className="text-sm text-slate-700 leading-relaxed italic">"{row.context}"</p>
-                              <p className="text-[10px] text-slate-400 mt-2">
-                                {new Date(row.timestamp).toLocaleString()}
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-bold text-slate-400 uppercase">
+                                  {row.mentioned ? 'Brand Context in AI Response' : 'AI Response — Tools Mentioned'}
+                                </p>
+                                {!row.mentioned && (
+                                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                    MarketInsight not in list
+                                  </span>
+                                )}
+                                {row.mentioned && row.rank > 0 && (
+                                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                    Ranked #{row.rank}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                                {row.context || 'No response content stored.'}
+                              </p>
+                              <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                                Scanned: {new Date(row.timestamp).toLocaleString()}
                               </p>
                             </div>
                           </td>
