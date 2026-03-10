@@ -43,7 +43,7 @@ async function callGroq(userQuery: string): Promise<string> {
       Authorization: `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'llama3-70b-8192',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'user',
@@ -121,9 +121,14 @@ export async function checkVisibility(
   let text = '';
   try {
     text = await callGroq(userQuery);
-  } catch {
-    // retry once
-    try { text = await callGroq(userQuery); } catch { text = ''; }
+  } catch (err) {
+    console.error('Groq call failed, retrying…', err);
+    try {
+      text = await callGroq(userQuery);
+    } catch (err2) {
+      console.error('Groq retry also failed:', err2);
+      text = '';
+    }
   }
 
   console.log('AI response:', text);
