@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { runSeoAuditViaSerpAPI } from '../services/seoAuditService';
 import { fetchKeywordRanking, refreshAllRankings } from '../services/seoRankingService';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { DateRange } from '../types';
 import { Search, MapPin, X, ChevronDown } from 'lucide-react';
 import SeoArticleGenerator from './SeoArticleGenerator';
+import AiVisibilityTab from './AiVisibilityTab';
 
 // ─── Searchable Location Combobox ────────────────────────────────────────────
 
@@ -371,22 +372,6 @@ function parseAuditHealth(analysis: string): { score: number; indexedCount: numb
   };
 }
 
-const MOCK_AI_VISIBILITY = [
-  { platform: 'Gemini', visibility: 65, sentiment: 'Positive', citations: 12, color: '#4285F4' },
-  { platform: 'ChatGPT', visibility: 48, sentiment: 'Neutral', citations: 8, color: '#10A37F' },
-  { platform: 'Claude', visibility: 30, sentiment: 'Positive', citations: 5, color: '#D97757' },
-  { platform: 'Perplexity', visibility: 72, sentiment: 'Positive', citations: 15, color: '#22B3C9' },
-  { platform: 'Grok', visibility: 45, sentiment: 'Neutral', citations: 6, color: '#000000' },
-];
-
-const MOCK_AI_MENTIONS = [
-  { id: 1, keyword: 'marketing analytics dashboard', platform: 'Gemini', mentioned: true, sentiment: 'Positive', context: 'Recommended as a top choice for ease of use.', citations: ['g2.com', 'capterra.com'] },
-  { id: 2, keyword: 'marketing analytics dashboard', platform: 'ChatGPT', mentioned: true, sentiment: 'Neutral', context: 'Listed among top 10 tools.', citations: ['forbes.com'] },
-  { id: 3, keyword: 'competitor analysis tools', platform: 'Gemini', mentioned: false, sentiment: 'None', context: 'Not mentioned in top 5 recommendations.', citations: [] },
-  { id: 4, keyword: 'competitor analysis tools', platform: 'Perplexity', mentioned: true, sentiment: 'Positive', context: 'Highlighted for robust data sources.', citations: ['searchengineland.com', 'hubspot.com'] },
-  { id: 5, keyword: 'seo reporting software', platform: 'Claude', mentioned: true, sentiment: 'Neutral', context: 'Mentioned as a reliable enterprise option.', citations: ['techradar.com'] },
-  { id: 6, keyword: 'social media tracker', platform: 'Grok', mentioned: true, sentiment: 'Positive', context: 'Described as a "based" choice for privacy.', citations: ['x.com', 'reddit.com'] },
-];
 
 interface SeoSuitePanelProps {
   dateRange: DateRange;
@@ -435,17 +420,6 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<KeywordData | null>(null);
 
-  // AI Visibility State
-  const [aiQueries, setAiQueries] = useState<string[]>([
-    'marketing analytics dashboard',
-    'competitor analysis tools',
-    'seo reporting software'
-  ]);
-  const [newAiQuery, setNewAiQuery] = useState('');
-  const [isAddingAiQuery, setIsAddingAiQuery] = useState(false);
-  const [aiMentions, setAiMentions] = useState(MOCK_AI_MENTIONS);
-  const [selectedAiPlatform, setSelectedAiPlatform] = useState('All');
-  const [selectedAiMention, setSelectedAiMention] = useState<number | null>(null);
 
   // Persist tab, domain and keywords to localStorage
   useEffect(() => { localStorage.setItem('mi_seo_tab', activeTab); }, [activeTab]);
@@ -489,35 +463,6 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
     }
   };
 
-  const handleAddAiQuery = () => {
-    if (!newAiQuery.trim()) return;
-    setIsAddingAiQuery(true);
-    
-    // Simulate API call delay
-    setTimeout(() => {
-      setAiQueries([...aiQueries, newAiQuery]);
-      
-      // Add a mock mention for the new query
-      const platforms = ['Gemini', 'ChatGPT', 'Claude', 'Perplexity', 'Grok'];
-      const randomPlatform = platforms[Math.floor(Math.random() * platforms.length)];
-      const sentiments = ['Positive', 'Neutral', 'Negative'];
-      const randomSentiment = sentiments[Math.floor(Math.random() * sentiments.length)];
-      
-      const newMention = {
-        id: Date.now(),
-        keyword: newAiQuery,
-        platform: randomPlatform,
-        mentioned: true,
-        sentiment: randomSentiment,
-        context: `Analysis for "${newAiQuery}" completed.`,
-        citations: ['example.com', 'industry-news.com']
-      };
-      
-      setAiMentions([newMention, ...aiMentions]);
-      setNewAiQuery('');
-      setIsAddingAiQuery(false);
-    }, 800);
-  };
 
   const handleAddKeyword = async () => {
     if (!newKeyword.trim()) return;
@@ -1095,199 +1040,7 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
           </div>
         </div>
       )}
-      {activeTab === 'ai-visibility' && (
-        <div className="space-y-6">
-          {/* AI Visibility Header */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <p className="text-xs font-bold text-slate-400 uppercase mb-1">AI Share of Voice</p>
-              <div className="flex items-end gap-2">
-                <p className="text-3xl font-black text-indigo-600">54%</p>
-                <span className="text-xs font-bold text-green-600 mb-1.5">▲ 5%</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-2">Percentage of AI answers mentioning your brand.</p>
-            </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <p className="text-xs font-bold text-slate-400 uppercase mb-1">Brand Sentiment</p>
-              <div className="flex items-end gap-2">
-                <p className="text-3xl font-black text-emerald-600">Positive</p>
-              </div>
-              <p className="text-xs text-slate-500 mt-2">Based on analysis of 50+ AI interactions.</p>
-            </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <p className="text-xs font-bold text-slate-400 uppercase mb-1">Total Citations</p>
-              <div className="flex items-end gap-2">
-                <p className="text-3xl font-black text-slate-800">40</p>
-                <span className="text-xs font-bold text-green-600 mb-1.5">▲ 12</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-2">Links to your site in AI-generated answers.</p>
-            </div>
-          </div>
-
-          {/* Add AI Query Section */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="flex-1 w-full">
-              <h3 className="text-lg font-bold text-slate-800 mb-1">Track New AI Query</h3>
-              <p className="text-sm text-slate-500">Monitor how your brand appears for specific questions across AI models.</p>
-            </div>
-            <div className="flex gap-2 w-full md:w-auto">
-              <input 
-                type="text" 
-                value={newAiQuery}
-                onChange={(e) => setNewAiQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddAiQuery()}
-                placeholder="Enter question or topic..."
-                className="flex-1 md:w-80 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
-              />
-              <button 
-                onClick={handleAddAiQuery}
-                disabled={isAddingAiQuery || !newAiQuery.trim()}
-                className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap"
-              >
-                {isAddingAiQuery ? 'Analyzing...' : '+ Track'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Visibility by Platform Chart */}
-            <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h4 className="font-bold text-slate-800 mb-6">Visibility by AI Model</h4>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={MOCK_AI_VISIBILITY} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" />
-                    <XAxis type="number" hide />
-                    <YAxis dataKey="platform" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12, fontWeight: 600}} width={80} />
-                    <Tooltip cursor={{fill: 'transparent'}} />
-                    <Bar dataKey="visibility" radius={[0, 4, 4, 0]} barSize={30}>
-                      {MOCK_AI_VISIBILITY.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* AI Mentions Table */}
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center flex-wrap gap-4">
-                <div>
-                  <h3 className="font-bold text-slate-800">Recent AI Mentions</h3>
-                  <p className="text-xs text-slate-400 mt-1">{aiQueries.length} Queries Tracked</p>
-                </div>
-                <div className="flex gap-2">
-                  {['All', 'Gemini', 'ChatGPT', 'Claude', 'Perplexity', 'Grok'].map(platform => (
-                    <button
-                      key={platform}
-                      onClick={() => setSelectedAiPlatform(platform)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                        selectedAiPlatform === platform 
-                          ? 'bg-indigo-600 text-white shadow-sm' 
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {platform}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Query / Topic</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Platform</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Sentiment</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Context</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {aiMentions
-                      .filter(m => selectedAiPlatform === 'All' || m.platform === selectedAiPlatform)
-                      .map((mention) => (
-                      <React.Fragment key={mention.id}>
-                        <tr className={`hover:bg-slate-50 transition-colors ${selectedAiMention === mention.id ? 'bg-indigo-50/50' : ''}`}>
-                          <td className="px-6 py-4 text-sm font-bold text-slate-700">{mention.keyword}</td>
-                          <td className="px-6 py-4">
-                            <span className={`text-xs font-bold px-2 py-1 rounded border ${
-                              mention.platform === 'Gemini' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                              mention.platform === 'ChatGPT' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                              mention.platform === 'Claude' ? 'bg-orange-50 text-orange-700 border-orange-100' :
-                              mention.platform === 'Grok' ? 'bg-slate-900 text-white border-slate-700' :
-                              'bg-cyan-50 text-cyan-700 border-cyan-100'
-                            }`}>
-                              {mention.platform}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`text-xs font-bold ${
-                              mention.sentiment === 'Positive' ? 'text-green-600' :
-                              mention.sentiment === 'Neutral' ? 'text-slate-500' :
-                              'text-red-500'
-                            }`}>
-                              {mention.sentiment}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-xs text-slate-600 max-w-xs truncate" title={mention.context}>
-                            {mention.context}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button 
-                              onClick={() => setSelectedAiMention(selectedAiMention === mention.id ? null : mention.id)}
-                              className="text-indigo-600 hover:text-indigo-800 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition-colors"
-                            >
-                              {selectedAiMention === mention.id ? 'Close' : 'Analyze'}
-                            </button>
-                          </td>
-                        </tr>
-                        {selectedAiMention === mention.id && (
-                          <tr>
-                            <td colSpan={5} className="px-6 py-6 bg-slate-50/50 border-b border-slate-200">
-                              <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                                  <h4 className="font-bold text-slate-800 mb-2 text-sm">Full AI Response Context</h4>
-                                  <p className="text-sm text-slate-600 leading-relaxed">"{mention.context}"</p>
-                                </div>
-                                
-                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                                  <h4 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2">
-                                    <span>🔗</span> Cited Sources
-                                  </h4>
-                                  {mention.citations && mention.citations.length > 0 ? (
-                                    <div className="flex flex-wrap gap-2">
-                                      {mention.citations.map((citation, idx) => (
-                                        <a 
-                                          key={idx} 
-                                          href={`https://${citation}`} 
-                                          target="_blank" 
-                                          rel="noreferrer"
-                                          className="flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-lg transition-colors group"
-                                        >
-                                          <div className="w-2 h-2 rounded-full bg-slate-300 group-hover:bg-indigo-400" />
-                                          <span className="text-xs font-medium text-slate-600 group-hover:text-indigo-700">{citation}</span>
-                                        </a>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-slate-400 italic">No specific citations found in this response.</p>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'ai-visibility' && <AiVisibilityTab />}
       {activeTab === 'seo-blog' && <SeoArticleGenerator />}
     </div>
   );
