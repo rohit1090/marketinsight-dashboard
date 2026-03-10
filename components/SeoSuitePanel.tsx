@@ -4,6 +4,110 @@ import { runSeoAuditViaSerpAPI } from '../services/seoAuditService';
 import { fetchKeywordRanking, refreshAllRankings } from '../services/seoRankingService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell } from 'recharts';
 import { DateRange } from '../types';
+import { Search, MapPin, X, ChevronDown } from 'lucide-react';
+
+// ─── Searchable Location Combobox ────────────────────────────────────────────
+
+interface LocationSearchProps {
+  locations: string[];
+  value: string;
+  onChange: (v: string) => void;
+}
+
+const LocationSearch: React.FC<LocationSearchProps> = ({ locations, value, onChange }) => {
+  const [query,  setQuery]  = useState('');
+  const [open,   setOpen]   = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Close when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false); setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = query.trim()
+    ? locations.filter(l => l.toLowerCase().includes(query.toLowerCase()))
+    : locations;
+
+  const handleSelect = (loc: string) => {
+    onChange(loc); setOpen(false); setQuery('');
+  };
+
+  return (
+    <div ref={wrapRef} className="relative min-w-[220px]">
+      {/* Trigger button */}
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setQuery(''); }}
+        className="w-full flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:border-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+      >
+        <MapPin size={13} className="text-indigo-500 shrink-0" />
+        <span className="flex-1 text-left truncate">{value}</span>
+        <ChevronDown size={13} className={`text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-50 top-full mt-1 w-full min-w-[260px] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          {/* Search input */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50">
+            <Search size={13} className="text-slate-400 shrink-0" />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+                if (e.key === 'Enter' && filtered.length > 0) handleSelect(filtered[0]);
+              }}
+              placeholder="Search location…"
+              className="flex-1 bg-transparent text-sm outline-none text-slate-700 placeholder-slate-400"
+            />
+            {query && (
+              <button onClick={() => setQuery('')} className="text-slate-400 hover:text-slate-600">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          {/* Options list */}
+          <div className="max-h-56 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No locations found</p>
+            ) : filtered.map(loc => (
+              <button
+                key={loc}
+                onClick={() => handleSelect(loc)}
+                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center gap-2
+                  ${loc === value ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'}`}
+              >
+                <MapPin size={11} className="shrink-0 opacity-40" />
+                {query ? (
+                  <span dangerouslySetInnerHTML={{
+                    __html: loc.replace(
+                      new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+                      '<mark class="bg-yellow-100 text-yellow-800 rounded">$1</mark>'
+                    )
+                  }} />
+                ) : loc}
+              </button>
+            ))}
+          </div>
+          {filtered.length > 0 && (
+            <p className="text-[10px] text-slate-400 text-center py-1.5 border-t border-slate-100">
+              {filtered.length} location{filtered.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 
 interface KeywordHistory {
@@ -79,6 +183,7 @@ const LOCATIONS = [
   'AU',
   'DE',
   'FR',
+  'India',
   // India - States
   'India - Andhra Pradesh',
   'India - Arunachal Pradesh',
@@ -606,13 +711,11 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
                 <p className="text-sm text-slate-500">Track your rankings across Google Search mobile & desktop.</p>
               </div>
               <div className="flex gap-2 w-full md:w-auto">
-                <select
+                <LocationSearch
+                  locations={LOCATIONS}
                   value={newLocation}
-                  onChange={(e) => setNewLocation(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700"
-                >
-                  {LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                </select>
+                  onChange={setNewLocation}
+                />
                 <input
                   type="text"
                   value={newKeyword}
@@ -639,14 +742,19 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
                 type="text"
                 value={trackedDomain}
                 onChange={(e) => setTrackedDomain(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && keywords.length > 0) refreshRankings(); }}
                 placeholder="e.g. arivupro.com  (leave blank to see top organic result)"
                 className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-slate-700"
               />
-              {trackedDomain && (
-                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100 shrink-0">
-                  Tracking: {trackedDomain.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                </span>
-              )}
+              <button
+                onClick={refreshRankings}
+                disabled={isRefreshing || keywords.length === 0}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-40 whitespace-nowrap"
+              >
+                {isRefreshing
+                  ? <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Checking…</>
+                  : '↻ Apply & Refresh'}
+              </button>
             </div>
           </div>
 
@@ -697,11 +805,11 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
                         </td>
                         <td className="px-6 py-4">
                           {kw.rank === 0 ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">
-                              &gt;10
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded" title="Domain not found in top 100 results">
+                              &gt;100
                             </span>
                           ) : (
-                            <span className={`text-lg font-black ${kw.rank <= 3 ? 'text-emerald-600' : kw.rank <= 10 ? 'text-indigo-600' : 'text-slate-500'}`}>
+                            <span className={`text-lg font-black ${kw.rank <= 3 ? 'text-emerald-600' : kw.rank <= 10 ? 'text-indigo-600' : kw.rank <= 30 ? 'text-amber-600' : 'text-slate-500'}`}>
                               #{kw.rank}
                             </span>
                           )}
@@ -775,25 +883,39 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
                               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                                 <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                                   <span>🔍</span> Current SERP Leaders
+                                  {trackedDomain && (
+                                    <span className="ml-auto text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                                      Tracking: {trackedDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')}
+                                    </span>
+                                  )}
                                 </h4>
-                                <div className="space-y-3">
-                                  {kw.serpResults?.map((result) => (
-                                    <div key={result.rank} className={`flex items-center gap-3 p-3 rounded-lg border ${result.domain === 'mybrand.com' ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-100'}`}>
-                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${result.rank <= 3 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                        {result.rank}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-slate-800 truncate">{result.title}</p>
-                                        <a href={result.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline truncate block">
-                                          {result.url}
-                                        </a>
-                                      </div>
-                                      {result.domain === 'mybrand.com' && (
-                                        <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded">YOU</span>
+                                {(() => {
+                                  const needle = trackedDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+                                  const isYou = (domain: string) => !!needle && domain.toLowerCase().includes(needle);
+                                  return (
+                                    <div className="space-y-2">
+                                      {kw.serpResults?.length ? kw.serpResults.map((result) => (
+                                        <div key={`${result.rank}-${result.domain}`}
+                                          className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${isYou(result.domain) ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-slate-100 hover:bg-slate-50'}`}>
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0 ${result.rank <= 3 ? 'bg-slate-900 text-white' : isYou(result.domain) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                            {result.rank}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-slate-800 truncate">{result.title}</p>
+                                            <a href={result.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline truncate block">
+                                              {result.domain}
+                                            </a>
+                                          </div>
+                                          {isYou(result.domain) && (
+                                            <span className="text-[10px] font-black bg-indigo-600 text-white px-2.5 py-1 rounded-full shrink-0">YOU</span>
+                                          )}
+                                        </div>
+                                      )) : (
+                                        <p className="text-xs text-slate-400 text-center py-4">No SERP data — click Analyze after refreshing.</p>
                                       )}
                                     </div>
-                                  ))}
-                                </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </td>

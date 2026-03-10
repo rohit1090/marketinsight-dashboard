@@ -4,59 +4,169 @@
  * Fetches real Google SERP data for a keyword+location via SerpAPI and maps
  * it to the KeywordData shape used by SeoSuitePanel's Rankings table.
  *
- * Architecture — scalable services alongside this file:
- *   services/seoRankingService.ts    ← this file (Google rank positions)
- *   services/seoKeywordService.ts    ← keyword research / volume / CPC data
- *   services/seoCompetitorService.ts ← competitor gap analysis
- *   services/seoAuditService.ts      ← technical SEO audits
- *
- * All services call the same /api/serpapi proxy (defined in vite.config.ts)
- * which forwards requests to https://serpapi.com server-side to avoid CORS.
- *
- * To swap data sources later:
- *   - Google Search Console API → replace serpSearch() with GSC rows[]
- *   - DataForSEO               → replace with tasks/get endpoint
- *   - Ahrefs / Semrush API     → replace volume/difficulty helpers
+ * Uses full SerpAPI location parameters:
+ *   engine, q, location, google_domain, hl, gl, api_key, num
  */
 
 const SERPAPI_BASE = '/api/serpapi/search.json';
 
-// Maps LOCATIONS dropdown values → SerpAPI `gl` country codes
-const LOCATION_TO_GL: Record<string, string> = {
-  'Global':  '',
-  'US':      'us',
-  'UK':      'gb',
-  'CA':      'ca',
-  'AU':      'au',
-  'DE':      'de',
-  'FR':      'fr',
-};
+// ─── Location config ─────────────────────────────────────────────────────────
 
-/**
- * Converts a location string to a SerpAPI `gl` code.
- * All "India - *" variants map to "in".
- * Unknown values fall back to "us".
- */
-function toGl(location: string): string {
-  if (location.startsWith('India')) return 'in';
-  return LOCATION_TO_GL[location] ?? 'us';
+export interface LocationConfig {
+  location:     string;   // SerpAPI location string  e.g. "Bangalore Division, Karnataka, India"
+  google_domain: string;  // e.g. "google.co.in"
+  hl:           string;   // interface language       e.g. "en"
+  gl:           string;   // country code             e.g. "in"
 }
 
-// --- Types ---
+/** Maps UI location labels → SerpAPI location parameters */
+const LOCATION_CONFIGS: Record<string, LocationConfig> = {
+  // ── Global / Western ──────────────────────────────────────────────────────
+  'Global': { location: '',                gl: '',   google_domain: 'google.com',    hl: 'en' },
+  'US':     { location: 'United States',   gl: 'us', google_domain: 'google.com',    hl: 'en' },
+  'UK':     { location: 'United Kingdom',  gl: 'gb', google_domain: 'google.co.uk',  hl: 'en' },
+  'CA':     { location: 'Canada',          gl: 'ca', google_domain: 'google.ca',     hl: 'en' },
+  'AU':     { location: 'Australia',       gl: 'au', google_domain: 'google.com.au', hl: 'en' },
+  'DE':     { location: 'Germany',         gl: 'de', google_domain: 'google.de',     hl: 'de' },
+  'FR':     { location: 'France',          gl: 'fr', google_domain: 'google.fr',     hl: 'fr' },
+  'India':  { location: 'India',          gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+
+  // ── India — States ────────────────────────────────────────────────────────
+  'India - Andhra Pradesh':             { location: 'Andhra Pradesh, India',             gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Arunachal Pradesh':          { location: 'Arunachal Pradesh, India',          gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Assam':                      { location: 'Assam, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Bihar':                      { location: 'Bihar, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Chhattisgarh':               { location: 'Chhattisgarh, India',               gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Goa':                        { location: 'Goa, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Gujarat':                    { location: 'Gujarat, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Haryana':                    { location: 'Haryana, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Himachal Pradesh':           { location: 'Himachal Pradesh, India',           gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jharkhand':                  { location: 'Jharkhand, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Karnataka':                  { location: 'Karnataka, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Kerala':                     { location: 'Kerala, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Madhya Pradesh':             { location: 'Madhya Pradesh, India',             gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Maharashtra':                { location: 'Maharashtra, India',                gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Manipur':                    { location: 'Manipur, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Meghalaya':                  { location: 'Meghalaya, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Mizoram':                    { location: 'Mizoram, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Nagaland':                   { location: 'Nagaland, India',                   gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Odisha':                     { location: 'Odisha, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Punjab':                     { location: 'Punjab, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Rajasthan':                  { location: 'Rajasthan, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Sikkim':                     { location: 'Sikkim, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Tamil Nadu':                 { location: 'Tamil Nadu, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Telangana':                  { location: 'Telangana, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Tripura':                    { location: 'Tripura, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Uttar Pradesh':              { location: 'Uttar Pradesh, India',              gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Uttarakhand':                { location: 'Uttarakhand, India',                gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - West Bengal':                { location: 'West Bengal, India',                gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+
+  // ── India — Union Territories ─────────────────────────────────────────────
+  'India - Andaman and Nicobar Islands':                    { location: 'Andaman and Nicobar Islands, India', gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Chandigarh':                                     { location: 'Chandigarh, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Dadra and Nagar Haveli and Daman and Diu':       { location: 'Daman and Diu, India',               gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Delhi':                                          { location: 'Delhi, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jammu and Kashmir':                              { location: 'Jammu and Kashmir, India',           gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Ladakh':                                         { location: 'Ladakh, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Lakshadweep':                                    { location: 'Lakshadweep, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Puducherry':                                     { location: 'Puducherry, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+
+  // ── India — Major Cities (with exact SerpAPI location strings) ────────────
+  'India - Mumbai':           { location: 'Mumbai, Maharashtra, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Bangalore':        { location: 'Bangalore Division, Karnataka, India',            gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Hyderabad':        { location: 'Hyderabad, Telangana, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Ahmedabad':        { location: 'Ahmedabad, Gujarat, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Chennai':          { location: 'Chennai, Tamil Nadu, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Kolkata':          { location: 'Kolkata, West Bengal, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Surat':            { location: 'Surat, Gujarat, India',                           gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Pune':             { location: 'Pune, Maharashtra, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jaipur':           { location: 'Jaipur, Rajasthan, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Lucknow':          { location: 'Lucknow, Uttar Pradesh, India',                   gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Kanpur':           { location: 'Kanpur, Uttar Pradesh, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Nagpur':           { location: 'Nagpur, Maharashtra, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Indore':           { location: 'Indore, Madhya Pradesh, India',                   gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Thane':            { location: 'Thane, Maharashtra, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Bhopal':           { location: 'Bhopal, Madhya Pradesh, India',                   gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Visakhapatnam':    { location: 'Visakhapatnam, Andhra Pradesh, India',            gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Pimpri-Chinchwad': { location: 'Pimpri-Chinchwad, Maharashtra, India',            gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Patna':            { location: 'Patna, Bihar, India',                             gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Vadodara':         { location: 'Vadodara, Gujarat, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Ghaziabad':        { location: 'Ghaziabad, Uttar Pradesh, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Ludhiana':         { location: 'Ludhiana, Punjab, India',                         gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Agra':             { location: 'Agra, Uttar Pradesh, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Nashik':           { location: 'Nashik, Maharashtra, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Faridabad':        { location: 'Faridabad, Haryana, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Meerut':           { location: 'Meerut, Uttar Pradesh, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Rajkot':           { location: 'Rajkot, Gujarat, India',                          gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Varanasi':         { location: 'Varanasi, Uttar Pradesh, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Srinagar':         { location: 'Srinagar, Jammu and Kashmir, India',              gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Aurangabad':       { location: 'Aurangabad, Maharashtra, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Dhanbad':          { location: 'Dhanbad, Jharkhand, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Amritsar':         { location: 'Amritsar, Punjab, India',                         gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Navi Mumbai':      { location: 'Navi Mumbai, Maharashtra, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Allahabad':        { location: 'Prayagraj, Uttar Pradesh, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Howrah':           { location: 'Howrah, West Bengal, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Ranchi':           { location: 'Ranchi, Jharkhand, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Gwalior':          { location: 'Gwalior, Madhya Pradesh, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jabalpur':         { location: 'Jabalpur, Madhya Pradesh, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Coimbatore':       { location: 'Coimbatore, Tamil Nadu, India',                   gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Vijayawada':       { location: 'Vijayawada, Andhra Pradesh, India',               gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jodhpur':          { location: 'Jodhpur, Rajasthan, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Madurai':          { location: 'Madurai, Tamil Nadu, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Raipur':           { location: 'Raipur, Chhattisgarh, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Kota':             { location: 'Kota, Rajasthan, India',                          gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Guwahati':         { location: 'Guwahati, Assam, India',                          gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Solapur':          { location: 'Solapur, Maharashtra, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Hubballi-Dharwad': { location: 'Hubli-Dharwad, Karnataka, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Bareilly':         { location: 'Bareilly, Uttar Pradesh, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Moradabad':        { location: 'Moradabad, Uttar Pradesh, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Mysore':           { location: 'Mysore, Karnataka, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Gurgaon':          { location: 'Gurugram, Haryana, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Aligarh':          { location: 'Aligarh, Uttar Pradesh, India',                   gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jalandhar':        { location: 'Jalandhar, Punjab, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Tiruchirappalli':  { location: 'Tiruchirappalli, Tamil Nadu, India',              gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Bhubaneswar':      { location: 'Bhubaneswar, Odisha, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Salem':            { location: 'Salem, Tamil Nadu, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Warangal':         { location: 'Warangal, Telangana, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Thiruvananthapuram':{ location: 'Thiruvananthapuram, Kerala, India',              gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Guntur':           { location: 'Guntur, Andhra Pradesh, India',                   gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Bikaner':          { location: 'Bikaner, Rajasthan, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Noida':            { location: 'Noida, Uttar Pradesh, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jamshedpur':       { location: 'Jamshedpur, Jharkhand, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Cuttack':          { location: 'Cuttack, Odisha, India',                          gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Kochi':            { location: 'Kochi, Kerala, India',                            gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Nellore':          { location: 'Nellore, Andhra Pradesh, India',                  gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Dehradun':         { location: 'Dehradun, Uttarakhand, India',                    gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Jammu':            { location: 'Jammu, Jammu and Kashmir, India',                 gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Mangalore':        { location: 'Mangaluru, Karnataka, India',                     gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Erode':            { location: 'Erode, Tamil Nadu, India',                        gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Belgaum':          { location: 'Belagavi, Karnataka, India',                      gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+  'India - Udaipur':          { location: 'Udaipur, Rajasthan, India',                       gl: 'in', google_domain: 'google.co.in', hl: 'en' },
+};
+
+/** Returns the SerpAPI location config for a given display label.  */
+export function toLocationConfig(label: string): LocationConfig {
+  if (LOCATION_CONFIGS[label]) return LOCATION_CONFIGS[label];
+  // Fallback for any "India - X" not explicitly mapped
+  if (label.startsWith('India - ')) {
+    const name = label.replace('India - ', '');
+    return { location: `${name}, India`, gl: 'in', google_domain: 'google.co.in', hl: 'en' };
+  }
+  return { location: label, gl: 'us', google_domain: 'google.com', hl: 'en' };
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface RankingResult {
   keyword:     string;
   location:    string;
-  /** Tracked domain's Google rank (1–10). 0 = domain not found in top 10. */
   rank:        number;
-  /** URL of the tracked domain's ranking page (falls back to #1 result when untracked). */
   url:         string;
   title:       string;
-  change:      number;        // 0 on first fetch; positive = moved up, negative = dropped
-  volume:      number;        // placeholder — replace with DataForSEO / Ahrefs later
-  difficulty:  number;        // placeholder — replace with Semrush / Ahrefs later
-  serpResults: SerpItem[];    // top 5 real competitor URLs from Google
-  /** true when trackedDomain was found in the results */
+  change:      number;
+  volume:      number;
+  difficulty:  number;
+  serpResults: SerpItem[];
   inTopTen:    boolean;
   fetchedAt:   string;
 }
@@ -73,7 +183,6 @@ interface SerpOrganic {
   title:    string;
   link:     string;
   snippet?: string;
-  displayed_link?: string;
 }
 
 interface SerpResponse {
@@ -81,111 +190,70 @@ interface SerpResponse {
   error?: string;
 }
 
-// --- Internal helpers ---
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Extracts the root domain from a URL (strips www.) */
 function extractDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
 }
 
-/**
- * Finds the rank of a tracked domain within organic results.
- *
- * Matching is intentionally loose (includes) so both:
- *   - "mybrand.com" matches "https://mybrand.com/blog/seo"
- *   - "app.mybrand.com" also matches
- *
- * Returns the matching result or null when the domain is not in top 10.
- * To support Google Search Console data later, replace this function with
- * a GSC rows[].keys lookup where keys[0] = page URL.
- */
-function findDomainRank(
-  results: SerpOrganic[],
-  trackedDomain: string,
-): SerpOrganic | null {
+function findDomainRank(results: SerpOrganic[], trackedDomain: string): SerpOrganic | null {
   if (!trackedDomain.trim()) return null;
-  const needle = trackedDomain.toLowerCase().replace(/^www\./, '');
+  const needle = trackedDomain.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/^www\./, '');
   return results.find((r) => r.link.toLowerCase().includes(needle)) ?? null;
 }
 
-/**
- * Derives a volume estimate from the keyword string length and a seed.
- * Replace with a real keyword volume API (e.g., DataForSEO Keywords Data)
- * when available — this is purely a display placeholder.
- */
 function estimateVolume(keyword: string): number {
   const seed = keyword.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const brackets = [200, 400, 800, 1200, 2400, 5000, 9900];
-  return brackets[seed % brackets.length];
+  return [200, 400, 800, 1200, 2400, 5000, 9900][seed % 7];
 }
 
-/**
- * Derives a difficulty estimate from the number of organic results returned
- * and the keyword's character count.
- * Replace with Semrush / Ahrefs / DataForSEO KD endpoint when available.
- */
 function estimateDifficulty(resultCount: number, keyword: string): number {
   const base = resultCount >= 10 ? 60 : resultCount >= 7 ? 45 : 30;
-  const jitter = keyword.length % 20;
-  return Math.min(base + jitter, 95);
+  return Math.min(base + (keyword.length % 20), 95);
 }
 
-// --- API call ---
+// ─── API call ─────────────────────────────────────────────────────────────────
 
-async function serpSearch(keyword: string, gl: string): Promise<SerpOrganic[]> {
+async function serpSearch(keyword: string, cfg: LocationConfig): Promise<SerpOrganic[]> {
   const key = import.meta.env.VITE_SERPAPI_KEY;
-  const params = new URLSearchParams({
-    q:       keyword,
+  const params: Record<string, string> = {
     engine:  'google',
+    q:       keyword,
     api_key: key,
-    num:     '10',
-    ...(gl ? { gl } : {}),
-  });
-  const res = await fetch(`${SERPAPI_BASE}?${params}`);
+    num:     '100',   // fetch up to 100 results so domains ranking beyond #10 are found
+  };
+  if (cfg.gl)            params.gl            = cfg.gl;
+  if (cfg.location)      params.location      = cfg.location;
+  if (cfg.google_domain) params.google_domain = cfg.google_domain;
+  if (cfg.hl)            params.hl            = cfg.hl;
+
+  const res = await fetch(`${SERPAPI_BASE}?${new URLSearchParams(params)}`);
   if (!res.ok) throw new Error(`SerpAPI ${res.status}: ${res.statusText}`);
   const data = await res.json() as SerpResponse;
   if (data.error) throw new Error(`SerpAPI error: ${data.error}`);
   return data.organic_results ?? [];
 }
 
-// --- Public API ---
+// ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Fetches the live Google SERP for a keyword+location and finds where
- * the tracked domain appears.
- *
- * @param keyword       - The search query (e.g. "seo tools")
- * @param location      - Dashboard location string (e.g. "US", "India - Mumbai")
- * @param trackedDomain - Your site's domain (e.g. "mybrand.com").
- *                        When provided, rank = your position in Google.
- *                        When omitted, rank = position of the #1 result (always 1).
- *
- * rank = 0 means the tracked domain was not found in the top 10 results.
- */
 export async function fetchKeywordRanking(
   keyword: string,
   location: string,
   trackedDomain = '',
 ): Promise<RankingResult> {
-  const gl      = toGl(location);
-  const results = await serpSearch(keyword, gl);
+  const cfg     = toLocationConfig(location);
+  const results = await serpSearch(keyword, cfg);
 
-  // Find where the tracked domain appears, if provided
-  const domainMatch = findDomainRank(results, trackedDomain);
-
-  // Determine the result to display for rank/url/title:
-  //   - domainMatch  → show your domain's rank
-  //   - no match but domain was specified → rank 0 (not in top 10)
-  //   - no domain specified → fall back to #1 result
+  const domainMatch   = findDomainRank(results, trackedDomain);
   const displayResult = domainMatch ?? (trackedDomain ? null : results[0]);
   const inTopTen      = !!domainMatch;
 
-  // Top 5 organic results for the "SERP Leaders" expandable section
-  const serpResults: SerpItem[] = results.slice(0, 5).map((r) => ({
+  // Top 10 + tracked domain entry (if ranked 11–100, append it so it's always visible)
+  const top10 = results.slice(0, 10);
+  const domainInTop10 = domainMatch && top10.some(r => r.link === domainMatch.link);
+  const serpSlice = domainMatch && !domainInTop10 ? [...top10, domainMatch] : top10;
+
+  const serpResults: SerpItem[] = serpSlice.map((r) => ({
     rank:   r.position,
     title:  r.title,
     url:    r.link,
@@ -195,25 +263,18 @@ export async function fetchKeywordRanking(
   return {
     keyword,
     location,
-    rank:        displayResult?.position ?? 0,
-    url:         displayResult?.link     ?? '',
-    title:       displayResult?.title    ?? '',
-    change:      0,
-    volume:      estimateVolume(keyword),
-    difficulty:  estimateDifficulty(results.length, keyword),
+    rank:       displayResult?.position ?? 0,
+    url:        displayResult?.link     ?? '',
+    title:      displayResult?.title    ?? '',
+    change:     0,
+    volume:     estimateVolume(keyword),
+    difficulty: estimateDifficulty(results.length, keyword),
     serpResults,
     inTopTen,
-    fetchedAt:   new Date().toISOString(),
+    fetchedAt:  new Date().toISOString(),
   };
 }
 
-/**
- * Refreshes rankings for multiple keywords in parallel.
- * Returns a map of keyword → RankingResult for easy merging.
- * Used by the "Refresh Data" button in SeoSuitePanel.
- *
- * @param trackedDomain - Your site's domain, passed to every fetchKeywordRanking call.
- */
 export async function refreshAllRankings(
   keywords: { keyword: string; location: string; rank: number }[],
   trackedDomain = '',
@@ -221,14 +282,10 @@ export async function refreshAllRankings(
   const settled = await Promise.allSettled(
     keywords.map((k) => fetchKeywordRanking(k.keyword, k.location, trackedDomain)),
   );
-
   const map = new Map<string, RankingResult>();
   settled.forEach((r, i) => {
     if (r.status === 'fulfilled') {
       const prev = keywords[i].rank;
-      // change > 0 = moved up (e.g. rank went from 8 → 5, change = +3)
-      // change < 0 = dropped
-      // special case: if prev was 0 (not ranked), change stays 0
       r.value.change = prev > 0 ? prev - r.value.rank : 0;
       map.set(keywords[i].keyword, r.value);
     }
