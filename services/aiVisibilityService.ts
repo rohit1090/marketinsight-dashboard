@@ -71,13 +71,27 @@ function detectMention(text: string): boolean {
 }
 
 function detectRank(text: string): number {
-  const lines = text.split('\n');
-  for (const line of lines) {
-    const match = line.match(/^(\d+)[.)]\s*(.*)/);
-    if (match && match[2].toLowerCase().includes(BRAND.toLowerCase())) {
-      return parseInt(match[1], 10);
+  // Primary: line-by-line scan — trim whitespace and strip bold markdown before matching
+  // Handles: "3. MarketInsight", "  3. **MarketInsight**", "**3.** MarketInsight"
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^\*{0,2}(\d+)[.)]\*{0,2}\s*(.*)/);
+    if (match) {
+      const content = match[2].replace(/\*/g, '').toLowerCase();
+      if (content.includes(BRAND.toLowerCase())) {
+        return parseInt(match[1], 10);
+      }
     }
   }
+
+  // Fallback: global scan for any "N. ... Brand ..." pattern across the full text
+  for (const m of text.matchAll(/(\d+)[.)]\s*([^\n]*)/g)) {
+    const content = m[2].replace(/\*/g, '').toLowerCase();
+    if (content.includes(BRAND.toLowerCase())) {
+      return parseInt(m[1], 10);
+    }
+  }
+
   return -1;
 }
 
@@ -112,10 +126,14 @@ export async function checkVisibility(
     try { text = await callGroq(userQuery); } catch { text = ''; }
   }
 
+  console.log('AI response:', text);
+
   const mentioned  = detectMention(text);
   const rank       = detectRank(text);
   const sentiment  = detectSentiment(text, mentioned);
   const context    = extractContext(text, mentioned);
+
+  console.log('Detected rank:', rank);
 
   const result: VisibilityResult = {
     query: userQuery,
@@ -128,7 +146,16 @@ export async function checkVisibility(
   };
 
   try {
-    const ref = await addDoc(collection(db, 'ai_visibility_queries'), result);
+    // Explicitly write each field so rank is always saved as a number (never undefined/string)
+    const ref = await addDoc(collection(db, 'ai_visibility_queries'), {
+      query:     result.query,
+      model:     result.model,
+      mentioned: result.mentioned,
+      rank:      Number(result.rank),
+      sentiment: result.sentiment,
+      context:   result.context,
+      timestamp: result.timestamp,
+    });
     result.id = ref.id;
   } catch (e) {
     console.error('Firestore write failed:', e);
