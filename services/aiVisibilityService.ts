@@ -107,9 +107,9 @@ function detectSentiment(text: string, mentioned: boolean): string {
 }
 
 function extractContext(text: string, mentioned: boolean): string {
-  if (!mentioned) return text.slice(0, 800).trim();
+  if (!mentioned) return text.trim();
   const idx = text.toLowerCase().indexOf(BRAND.toLowerCase());
-  return text.slice(Math.max(0, idx - 60), idx + 400).trim();
+  return text.slice(Math.max(0, idx - 60), idx + 600).trim();
 }
 
 // ── Core check ────────────────────────────────────────────────────────────────

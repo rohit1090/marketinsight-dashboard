@@ -237,12 +237,23 @@ const App: React.FC = () => {
               className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 pl-2 pr-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
             >
               {auth.currentUser?.photoURL ? (
-                <img src={auth.currentUser.photoURL} className="w-7 h-7 rounded-lg object-cover" alt="avatar" />
-              ) : (
-                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white text-xs font-black flex items-center justify-center">
-                  {(auth.currentUser?.displayName || auth.currentUser?.email || 'U')[0].toUpperCase()}
-                </div>
-              )}
+                <img
+                  src={auth.currentUser.photoURL}
+                  className="w-7 h-7 rounded-lg object-cover"
+                  alt="avatar"
+                  onError={e => {
+                    const el = e.currentTarget;
+                    el.style.display = 'none';
+                    (el.nextSibling as HTMLElement)?.style.setProperty('display', 'flex');
+                  }}
+                />
+              ) : null}
+              <div
+                className="w-7 h-7 rounded-lg bg-indigo-600 text-white text-xs font-black items-center justify-center"
+                style={{ display: auth.currentUser?.photoURL ? 'none' : 'flex' }}
+              >
+                {(auth.currentUser?.displayName || auth.currentUser?.email || 'U')[0].toUpperCase()}
+              </div>
               {auth.currentUser?.displayName?.split(' ')[0] || 'Profile'}
             </button>
             <button 

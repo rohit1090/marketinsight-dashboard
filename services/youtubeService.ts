@@ -45,9 +45,25 @@ interface SerpApiResponse {
   description?: {
     content?: string;
   };
-  // Some responses nest under video_results
+  // Some responses nest under video_results (youtube_video engine)
   video_results?: SerpApiResponse;
+  // Array form returned by youtube search engine
+  video_results_list?: Array<{ video_id?: string; length?: string }>;
   error?: string;
+}
+
+/** Fallback: search YouTube for the video ID and grab length from video_results list */
+async function fetchLengthFallback(videoId: string, key: string): Promise<string> {
+  try {
+    const params = new URLSearchParams({ engine: 'youtube', search_query: videoId, api_key: key });
+    const res = await fetch(`${SERPAPI_BASE}?${params}`);
+    if (!res.ok) return '—';
+    const data = await res.json() as { video_results?: Array<{ video_id?: string; length?: string }> };
+    const match = (data.video_results ?? []).find(r => r.video_id === videoId);
+    return match?.length ?? '—';
+  } catch {
+    return '—';
+  }
 }
 
 /** Extracts the 11-character video ID from any YouTube URL format or bare ID */
@@ -83,6 +99,10 @@ export async function fetchYoutubeVideo(videoId: string): Promise<YoutubeVideoDa
   // Normalise: fields can be nested under video_results or sit at root
   const v: SerpApiResponse = data.video_results ?? data;
 
+  // If youtube_video engine didn't return length, fetch it via youtube search
+  const rawLength = v.length && v.length !== 'N/A' ? v.length : null;
+  const length = rawLength ?? await fetchLengthFallback(videoId, key);
+
   return {
     videoId:              v.video_id             ?? videoId,
     title:                v.title                ?? 'Unknown title',
@@ -91,7 +111,7 @@ export async function fetchYoutubeVideo(videoId: string): Promise<YoutubeVideoDa
     extractedViews:       v.extracted_views      ?? 0,
     likes:                v.likes                ?? '0',
     extractedLikes:       v.extracted_likes      ?? 0,
-    length:               v.length               ?? '—',
+    length,
     publishedDate:        v.published_date        ?? '—',
     channelName:          v.channel?.name         ?? 'Unknown channel',
     channelLink:          v.channel?.link         ?? '',

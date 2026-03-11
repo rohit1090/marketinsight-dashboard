@@ -17,6 +17,11 @@ export default defineConfig(({ mode }) => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api\/serpapi/, ''),
           },
+          '/api/socialblade': {
+            target: 'https://matrix.sbapis.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/socialblade/, '/b'),
+          },
         },
       },
       plugins: [react(), tailwindcss()],

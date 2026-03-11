@@ -2,13 +2,16 @@
 import React, { useState } from 'react';
 import { suggestSocialContent } from '../services/geminiService';
 import YoutubeAnalyzer from './YoutubeAnalyzer';
+import YouTubeChannelAnalyzer from './panels/social/youtube/YouTubeChannelAnalyzer';
 
-type SocialTab = 'overview' | 'youtube';
+type SocialTab   = 'overview' | 'youtube';
+type YouTubeMode = 'channel' | 'video';
 
 const SocialHubPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SocialTab>(
     () => (localStorage.getItem('mi_social_tab') as SocialTab | null) ?? 'overview'
   );
+  const [ytMode, setYtMode] = useState<YouTubeMode>('channel');
 
   const [topic, setTopic] = useState('');
   const [suggestions, setSuggestions] = useState('');
@@ -160,7 +163,41 @@ const SocialHubPanel: React.FC = () => {
       )}
 
       {/* ── YouTube tab ───────────────────────────────────────────────────── */}
-      {activeTab === 'youtube' && <YoutubeAnalyzer />}
+      {activeTab === 'youtube' && (
+        <div className="space-y-4">
+          {/* Pill switcher */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setYtMode('channel')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                ytMode === 'channel'
+                  ? 'text-white shadow-md'
+                  : 'bg-white text-slate-500 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+              }`}
+              style={ytMode === 'channel' ? { background: 'linear-gradient(135deg, #4F46E5, #7C3AED)' } : {}}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/>
+              </svg>
+              Channel Analyzer
+            </button>
+            <button
+              onClick={() => setYtMode('video')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                ytMode === 'video'
+                  ? 'text-white shadow-md'
+                  : 'bg-white text-slate-500 border border-slate-200 hover:border-red-300 hover:text-red-600'
+              }`}
+              style={ytMode === 'video' ? { background: 'linear-gradient(135deg, #EF4444, #DC2626)' } : {}}
+            >
+              ▶ Video Analyzer
+            </button>
+          </div>
+
+          {ytMode === 'channel' && <YouTubeChannelAnalyzer />}
+          {ytMode === 'video'   && <YoutubeAnalyzer />}
+        </div>
+      )}
 
 
     </div>

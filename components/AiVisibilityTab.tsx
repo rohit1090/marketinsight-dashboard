@@ -27,6 +27,26 @@ function sentimentBadge(s: string) {
   return 'bg-slate-100 text-slate-600 border-slate-200';
 }
 
+function renderMarkdown(text: string): React.ReactNode {
+  if (!text) return 'No response content stored.';
+  return text.split('\n').map((line, i) => {
+    // Convert **text** to <strong>
+    const parts = line.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={j}>{part.slice(2, -2)}</strong>;
+      }
+      return part;
+    });
+    // Add spacing after numbered list items
+    const isListItem = /^\s*\d+[.)]\s/.test(line);
+    return (
+      <span key={i} className={`block ${isListItem ? 'mt-2' : ''}`}>
+        {parts}
+      </span>
+    );
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AiVisibilityTab: React.FC = () => {
@@ -215,7 +235,7 @@ const AiVisibilityTab: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Chart */}
-        <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm self-start sticky top-6">
           <h4 className="font-bold text-slate-800 mb-1">Visibility by AI Model</h4>
           <p className="text-xs text-slate-400 mb-5">% of queries where brand was mentioned</p>
           {loading ? (
@@ -355,9 +375,9 @@ const AiVisibilityTab: React.FC = () => {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                                {row.context || 'No response content stored.'}
-                              </p>
+                              <div className="text-sm text-slate-700 leading-relaxed max-h-72 overflow-y-auto overflow-x-hidden pr-1">
+                                {renderMarkdown(row.context)}
+                              </div>
                               <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
                                 Scanned: {new Date(row.timestamp).toLocaleString()}
                               </p>

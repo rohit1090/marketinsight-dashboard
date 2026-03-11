@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, CreditCard, Mail, Phone, Edit2, Check, Loader2, LogOut, Camera } from 'lucide-react';
 import { updateProfile } from 'firebase/auth';
-import { auth } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, storage } from '../firebase';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -37,7 +38,31 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ onClose, onLogout }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isEditingName, setIsEditingName] = useState(false);
   const [isSavingName, setIsSavingName] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    if (!file.type.startsWith('image/')) { showToast('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB'); return; }
+    setIsUploadingPhoto(true);
+    try {
+      const storageRef = ref(storage, `avatars/${user.uid}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      await updateProfile(user, { photoURL: url });
+      showToast('Profile photo updated!');
+      // Force re-render by updating state
+      setDisplayName(prev => prev);
+    } catch {
+      showToast('Failed to upload photo');
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -110,15 +135,35 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ onClose, onLogout }) => {
                   src={user.photoURL}
                   alt="Profile"
                   className="w-20 h-20 rounded-2xl object-cover ring-4 ring-white/30 shadow-xl"
+                  onError={e => {
+                    const el = e.currentTarget;
+                    el.style.display = 'none';
+                    (el.nextSibling as HTMLElement)?.style.setProperty('display', 'flex');
+                  }}
                 />
-              ) : (
-                <div className="w-20 h-20 rounded-2xl bg-white/20 ring-4 ring-white/30 flex items-center justify-center text-white text-2xl font-black shadow-xl">
-                  {initials}
-                </div>
-              )}
-              <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-white rounded-lg flex items-center justify-center shadow-md cursor-pointer hover:scale-110 transition-transform">
-                <Camera size={13} className="text-indigo-600" />
+              ) : null}
+              <div
+                className="w-20 h-20 rounded-2xl bg-white/20 ring-4 ring-white/30 items-center justify-center text-white text-2xl font-black shadow-xl"
+                style={{ display: user?.photoURL ? 'none' : 'flex' }}
+              >
+                {initials}
               </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingPhoto}
+                className="absolute -bottom-1 -right-1 w-7 h-7 bg-white rounded-lg flex items-center justify-center shadow-md cursor-pointer hover:scale-110 transition-transform disabled:opacity-50"
+              >
+                {isUploadingPhoto
+                  ? <Loader2 size={13} className="text-indigo-600 animate-spin" />
+                  : <Camera size={13} className="text-indigo-600" />}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
             </div>
 
             <div>
