@@ -17,8 +17,12 @@ export default async function handler(req, res) {
   const segments  = url.pathname.replace(/^\/api\/socialblade\/?/, '');
   const targetUrl = `https://matrix.sbapis.com/b/${segments}${url.search}`;
 
+  const headers = { 'Accept': 'application/json' };
+  if (process.env.SOCIALBLADE_CLIENT_ID) headers['CLIENTID'] = process.env.SOCIALBLADE_CLIENT_ID;
+  if (process.env.SOCIALBLADE_TOKEN)     headers['token']    = process.env.SOCIALBLADE_TOKEN;
+
   try {
-    const upstream = await fetch(targetUrl, { method: 'GET' });
+    const upstream = await fetch(targetUrl, { method: 'GET', headers });
 
     const contentType = upstream.headers.get('content-type') || 'application/json';
     const body = await upstream.text();
