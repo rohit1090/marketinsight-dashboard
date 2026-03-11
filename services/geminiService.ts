@@ -1,6 +1,4 @@
 
-import { GoogleGenAI } from "@google/genai";
-import Groq from "groq-sdk";
 import { DashboardData, LiveMarketReport } from "../types";
 
 export interface SeoArticleResult {
@@ -19,9 +17,62 @@ export interface SeoArticleResult {
   rankingExplanation: string;
 }
 
-// Always use named parameter for apiKey
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
-const groq = new Groq({ apiKey: import.meta.env.VITE_GROQ_API_KEY, dangerouslyAllowBrowser: true });
+export interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+// ── Secure proxy helpers ──────────────────────────────────────────────────────
+// All AI API keys live server-side in /api/ai/gemini.js and /api/ai/groq.js.
+// The browser only ever sees requests to /api/ai/*.
+
+interface GeminiProxyResponse {
+  text: string;
+  candidates: Array<{
+    groundingMetadata?: {
+      groundingChunks?: Array<{ web?: { uri: string; title: string } }>;
+    };
+  }>;
+  error?: string;
+}
+
+interface GroqProxyResponse {
+  choices: Array<{ message: { content: string } }>;
+  error?: string;
+}
+
+async function callGemini(
+  model: string,
+  contents: string,
+  config?: Record<string, unknown>,
+): Promise<GeminiProxyResponse> {
+  const res = await fetch('/api/ai/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, contents, config }),
+  });
+  const data: GeminiProxyResponse = await res.json();
+  if (!res.ok) throw new Error(data.error || `Gemini proxy error ${res.status}`);
+  return data;
+}
+
+async function callGroq(
+  messages: Array<{ role: string; content: string }>,
+  options: Record<string, unknown> = {},
+): Promise<GroqProxyResponse> {
+  const res = await fetch('/api/ai/groq', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      ...options,
+    }),
+  });
+  const data: GroqProxyResponse = await res.json();
+  if (!res.ok) throw new Error(data.error || `Groq proxy error ${res.status}`);
+  return data;
+}
 
 export const runAgenticReasoning = async (data: DashboardData, goal: string) => {
   const prompt = `
@@ -38,16 +89,12 @@ export const runAgenticReasoning = async (data: DashboardData, goal: string) => 
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro-preview-05-06',
-      contents: prompt,
-      config: {
-        // Higher thinking budget for complex reasoning tasks
-        thinkingConfig: { thinkingBudget: 4000 }
-      }
-    });
-    // Use .text property to get the generated content
-    return response.text;
+    const { text } = await callGemini(
+      'gemini-2.5-pro-preview-05-06',
+      prompt,
+      { thinkingConfig: { thinkingBudget: 4000 } },
+    );
+    return text;
   } catch (error) {
     console.error("Agent reasoning failed:", error);
     return "Agent encountered a processing error. Retrying autonomous scan...";
@@ -57,12 +104,8 @@ export const runAgenticReasoning = async (data: DashboardData, goal: string) => 
 export const fetchAutonomousMarketScan = async (channel: string) => {
   const prompt = `Autonomous scan of ${channel} market trends. Identify one critical opportunity for an agent to execute today.`;
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
-    });
-    return response.text;
+    const { text } = await callGemini('gemini-2.0-flash', prompt, { tools: [{ googleSearch: {} }] });
+    return text;
   } catch (error) {
     return "Scan failed.";
   }
@@ -74,11 +117,8 @@ export const fetchAutonomousMarketScan = async (channel: string) => {
 export const getMarketingInsights = async (data: DashboardData): Promise<string> => {
   const prompt = `Analyze this marketing dashboard data and provide strategic insights: ${JSON.stringify(data)}. Focus on ROI and channel optimization.`;
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-    });
-    return response.text || '';
+    const { text } = await callGemini('gemini-2.0-flash', prompt);
+    return text;
   } catch (error) {
     console.error("Marketing Insights failed:", error);
     return "Could not generate insights at this time.";
@@ -101,37 +141,21 @@ export const fetchLiveMarketIntel = async (channel: string): Promise<LiveMarketR
 
   // Try with Google Search grounding first
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
+    const { text, candidates } = await callGemini('gemini-2.0-flash', prompt, { tools: [{ googleSearch: {} }] });
 
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-      uri: chunk.web?.uri || '',
-      title: chunk.web?.title || 'Source'
-    })).filter((s: any) => s.uri) || [];
+    const sources = candidates[0]?.groundingMetadata?.groundingChunks
+      ?.map((chunk) => ({ uri: chunk.web?.uri || '', title: chunk.web?.title || 'Source' }))
+      .filter((s) => s.uri) || [];
 
-    return {
-      summary: response.text || 'No live data found.',
-      sources: sources
-    };
+    return { summary: text || 'No live data found.', sources };
   } catch (groundingError) {
     const quotaMsg = parseQuotaError(groundingError);
 
     // If quota error, try without grounding (uses different quota bucket)
     if (quotaMsg) {
       try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: prompt,
-        });
-        return {
-          summary: response.text || 'No data found.',
-          sources: []
-        };
+        const { text } = await callGemini('gemini-2.0-flash', prompt);
+        return { summary: text || 'No data found.', sources: [] };
       } catch (fallbackError) {
         const fallbackQuotaMsg = parseQuotaError(fallbackError);
         throw new Error(fallbackQuotaMsg || (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
@@ -149,64 +173,132 @@ export const fetchLiveMarketIntel = async (channel: string): Promise<LiveMarketR
 export const runSeoAudit = async (domain: string): Promise<{ analysis: string; sources: any[] }> => {
   const prompt = `Perform a high-level SEO audit for the domain: ${domain}. Search for its search presence, technical health indicators, and backlink profile.`;
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
+    const { text, candidates } = await callGemini('gemini-2.0-flash', prompt, { tools: [{ googleSearch: {} }] });
 
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const sources = candidates[0]?.groundingMetadata?.groundingChunks || [];
 
-    return {
-      analysis: response.text || 'Audit analysis unavailable.',
-      sources: sources
-    };
+    return { analysis: text || 'Audit analysis unavailable.', sources };
   } catch (error) {
     console.error("SEO Audit failed:", error);
     throw error;
   }
 };
 
-/**
- * Added suggestSocialContent to fix export error in SocialHubPanel
- */
-export const generateSeoBlogArticle = async (topic: string): Promise<SeoArticleResult> => {
-  const prompt = `You are an expert SEO content strategist and writer. Generate a comprehensive, fully SEO-optimized blog article for this topic: "${topic}".
+// ── Enhanced prompt builder ────────────────────────────────────────────────────
 
-Return ONLY valid JSON with no markdown fences, no extra text, no explanation — just the raw JSON object.
+const buildBlogPrompt = (topic: string, brandName?: string): string => {
+  return `
+You are an expert SEO content writer and local business researcher with deep knowledge of coaching institutes, service providers, and businesses across India.
 
-Use this exact structure:
+TOPIC: "${topic}"
+${brandName ? `
+BRAND BOOST INSTRUCTIONS (HIGHEST PRIORITY):
+The user's brand is: "${brandName}"
+
+You MUST integrate this brand throughout the article:
+
+1. FEATURED FIRST: When listing coaching centers or businesses, ALWAYS mention "${brandName}" as the FIRST option with the most detailed description (4-5 sentences minimum).
+
+2. INTRODUCTION MENTION: Naturally mention "${brandName}" in the introduction paragraph as a top choice.
+
+3. COMPARISON TABLE: "${brandName}" must appear in the first row of any comparison table with the best ratings.
+
+4. RECOMMENDATION: In the conclusion, specifically recommend "${brandName}" as the top pick.
+
+5. NATURAL INTEGRATION: Weave "${brandName}" naturally throughout — do not make it look like an advertisement. Write it as if it is genuinely the best option based on research.
+
+6. FAQ MENTION: At least 1 FAQ answer should reference "${brandName}" as an example.
+
+For "${brandName}" specifically write:
+- Location: describe as conveniently located
+- Faculty: highly experienced and qualified
+- Results: excellent pass rates and student success
+- Features: personalized attention, comprehensive study material, mock tests, doubt clearing sessions
+- Fees: competitive and value for money
+` : ''}
+CRITICAL RULES — FOLLOW STRICTLY:
+
+━━━ RULE 1: REAL BUSINESSES ONLY ━━━
+- Always mention REAL, ACTUAL businesses/institutes/centers relevant to the topic and city mentioned
+- Include real locality/area names within the city
+- Include approximate fee ranges based on market research
+- NEVER use placeholder names like "Institute A", "Coaching Center 1", "XYZ Academy" etc.
+- If you are not sure about a specific institute, mention well-known national brands present in that city
+
+━━━ RULE 2: ARTICLE STRUCTURE ━━━
+Build the article field using this exact structure:
+
+## Introduction (150-200 words)
+- What the topic is about, why it matters, what the reader will learn
+
+## Why [City Name] for [Topic] (100-150 words)
+- Why this city is a hub: job market, demand, opportunities
+
+## Top [8-10] [Topic] in [City] — Detailed Reviews
+For EACH real institute/business:
+### [Real Full Name of Institute]
+- 📍 Location: [Specific area, City]
+- ⭐ Best For: [Who should choose this]
+- 📚 Courses Offered: [List relevant courses]
+- 💰 Fee Range: [Approximate fees]
+- ✅ Key Highlights: [3-4 bullet points]
+- 🕒 Batch Timings: [Morning/Evening/Weekend]
+
+## Fees Comparison Table
+Include a markdown table:
+| Institute Name | Location | Fee Range | Mode | Rating |
+|----------------|----------|-----------|------|--------|
+(real data for all institutes listed above)
+
+## How to Choose the Right [Topic] in [City]
+- 5 factors to consider (numbered list)
+- Questions to ask before enrolling
+- Red flags to avoid
+
+## Conclusion
+- Summary of top picks
+- Final recommendation based on different needs
+
+━━━ RULE 3: SEO REQUIREMENTS ━━━
+- Minimum 1500 words in the article field
+- Use main keyword naturally 8-10 times
+- First paragraph must contain the main keyword
+- Use proper ## H2 and ### H3 hierarchy
+- Add year 2025 where relevant for freshness
+- Separate all sections/paragraphs with blank lines
+
+━━━ RULE 4: CONTENT QUALITY ━━━
+- Helpful, conversational but professional tone
+- Specific details that show genuine research
+- Practical tips readers can use immediately
+- Honest pros and cons when comparing options
+
+Return ONLY valid JSON (no markdown fences, no extra text):
 {
-  "title": "Compelling, click-worthy article title",
-  "seoTitle": "SEO-optimized title under 60 characters",
-  "metaDescription": "Compelling meta description between 150-160 characters that includes the primary keyword",
-  "urlSlug": "url-friendly-slug-using-primary-keyword",
-  "primaryKeyword": "the single most important keyword phrase",
+  "title": "Compelling H1 title with city and year 2025",
+  "seoTitle": "SEO meta title under 60 characters",
+  "metaDescription": "Meta description 150-160 chars with main keyword",
+  "urlSlug": "url-friendly-slug-with-main-keyword",
+  "primaryKeyword": "main keyword phrase",
   "secondaryKeywords": ["kw1", "kw2", "kw3", "kw4", "kw5"],
   "lsiKeywords": ["lsi1", "lsi2", "lsi3", "lsi4", "lsi5", "lsi6"],
-  "article": "FULL ARTICLE TEXT HERE — minimum 900 words. Use ## for H2 headings. Use ### for H3 sub-headings where appropriate. Structure: one intro paragraph (2-3 sentences with primary keyword in first 100 words), 5-6 H2 sections each with 2-3 paragraphs (150-200 words per section), and a ## Conclusion section. Separate paragraphs with blank lines. Naturally weave the primary keyword and secondary keywords throughout.",
-  "seoScore": 87,
-  "readingTime": 5,
-  "wordCount": 1050,
-  "keywordDensity": 1.6,
-  "rankingExplanation": "Detailed paragraph (200+ words) explaining why this article can rank on Google's first page. Cover: (1) Search intent alignment — how the article matches what the user actually wants, (2) Keyword placement strategy — title, meta, first 100 words, H2s, throughout body, (3) Content depth & E-E-A-T signals — comprehensiveness, authority, expertise demonstrated, (4) Semantic SEO — LSI keywords, topical coverage, related entities covered, (5) Heading structure — logical H2/H3 hierarchy and how it helps both users and crawlers."
-}
+  "article": "FULL ARTICLE — minimum 1500 words using structure above. Real institute names only. Include comparison table.",
+  "seoScore": 88,
+  "readingTime": 8,
+  "wordCount": 1500,
+  "keywordDensity": 1.8,
+  "rankingExplanation": "Detailed 200+ word explanation covering: (1) Search intent alignment, (2) Keyword placement, (3) E-E-A-T signals with real business data, (4) Semantic SEO, (5) Heading structure."
+}`;
+};
 
-Requirements:
-- article field must be 900+ words of real, useful content
-- seoScore is integer 0-100
-- readingTime is integer minutes (assume 200 words/min)
-- wordCount is integer (actual count of article field)
-- keywordDensity is float percentage (primary keyword occurrences / total words * 100)`;
+export const generateSeoBlogArticle = async (topic: string, brandName?: string): Promise<SeoArticleResult> => {
+  const prompt = buildBlogPrompt(topic, brandName);
 
   try {
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_object' },
-    });
+    const response = await callGroq(
+      [{ role: 'user', content: prompt }],
+      { response_format: { type: 'json_object' }, max_tokens: 4000 },
+    );
     const text = response.choices[0]?.message?.content || '';
     return JSON.parse(text) as SeoArticleResult;
   } catch (error) {
@@ -215,14 +307,45 @@ Requirements:
   }
 };
 
+export const generateFaqFromArticle = async (topic: string, articleText: string): Promise<FaqItem[]> => {
+  const prompt = `You are an SEO expert. Based on this article about "${topic}", generate 8 SEO-friendly FAQ questions and detailed answers.
+
+Article summary (first 800 chars): ${articleText.slice(0, 800)}
+
+Requirements:
+- Questions must be real queries people search for on Google (use natural language)
+- Include long-tail keyword variations of the topic
+- Answers must be 60-100 words each: concise, accurate, beginner-friendly
+- Naturally include the topic keyword in answers
+- Cover different angles: what/why/how/when/best/tips/comparison questions
+- Make answers suitable for Google Featured Snippets (direct and clear)
+
+Return ONLY valid JSON with no markdown fences:
+{
+  "faqs": [
+    { "question": "Question here?", "answer": "Detailed answer here." }
+  ]
+}`;
+
+  try {
+    const response = await callGroq(
+      [{ role: 'user', content: prompt }],
+      { response_format: { type: 'json_object' } },
+    );
+    const text = response.choices[0]?.message?.content || '{"faqs":[]}';
+    const parsed = JSON.parse(text);
+    return parsed.faqs as FaqItem[];
+  } catch (error) {
+    console.error('FAQ generation failed:', error);
+    throw error;
+  }
+};
+
 export const suggestSocialContent = async (topic: string, platforms: string): Promise<string> => {
   const prompt = `Suggest creative and engaging social media content ideas for the following topic: "${topic}" across these platforms: ${platforms}. Include hooks and call-to-actions.`;
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-    });
-    return response.text || '';
+    const { text } = await callGemini('gemini-2.0-flash', prompt);
+    return text;
   } catch (error) {
     console.error("Social content suggestion failed:", error);
     return "Failed to generate suggestions.";

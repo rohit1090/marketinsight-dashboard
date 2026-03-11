@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { generateSeoBlogArticle, SeoArticleResult } from '../services/geminiService';
+import React, { useState, useCallback, useEffect } from 'react';
+import { generateSeoBlogArticle, generateFaqFromArticle, SeoArticleResult, FaqItem } from '../services/geminiService';
 
 // ─── Keyword highlight helper ────────────────────────────────────────────────
 
@@ -25,26 +25,23 @@ function renderArticle(articleText: string, keywords: string[]): React.ReactNode
   const nodes: React.ReactNode[] = [];
   let paraBuffer: string[] = [];
   let listBuffer: string[] = [];
+  let orderedBuffer: string[] = [];
+  let tableBuffer: string[] = [];
 
   const flushPara = (key: number) => {
     if (!paraBuffer.length) return;
     const text = paraBuffer.join(' ').trim();
-    if (text) {
-      nodes.push(
-        <p
-          key={`p-${key}`}
-          className="text-slate-700 leading-relaxed mb-4 text-[15px]"
-          dangerouslySetInnerHTML={{ __html: highlightKeywords(text, keywords) }}
-        />
-      );
-    }
+    if (text) nodes.push(
+      <p key={`p-${key}`} className="text-slate-700 leading-relaxed mb-4 text-[15px]"
+        dangerouslySetInnerHTML={{ __html: highlightKeywords(text, keywords) }} />
+    );
     paraBuffer = [];
   };
 
   const flushList = (key: number) => {
     if (!listBuffer.length) return;
     nodes.push(
-      <ul key={`ul-${key}`} className="list-disc list-inside space-y-1 mb-4 text-slate-700 text-[15px]">
+      <ul key={`ul-${key}`} className="list-disc list-outside ml-5 space-y-1.5 mb-4 text-slate-700 text-[15px]">
         {listBuffer.map((item, idx) => (
           <li key={idx} dangerouslySetInnerHTML={{ __html: highlightKeywords(item, keywords) }} />
         ))}
@@ -53,37 +50,85 @@ function renderArticle(articleText: string, keywords: string[]): React.ReactNode
     listBuffer = [];
   };
 
+  const flushOrdered = (key: number) => {
+    if (!orderedBuffer.length) return;
+    nodes.push(
+      <ol key={`ol-${key}`} className="list-decimal list-outside ml-5 space-y-1.5 mb-4 text-slate-700 text-[15px]">
+        {orderedBuffer.map((item, idx) => (
+          <li key={idx} dangerouslySetInnerHTML={{ __html: highlightKeywords(item, keywords) }} />
+        ))}
+      </ol>
+    );
+    orderedBuffer = [];
+  };
+
+  const flushTable = (key: number) => {
+    if (tableBuffer.length < 2) { tableBuffer = []; return; }
+    const headerCells = tableBuffer[0].split('|').map(c => c.trim()).filter(Boolean);
+    const rows = tableBuffer.slice(2).map(row =>
+      row.split('|').map(c => c.trim()).filter(Boolean)
+    ).filter(r => r.length > 0);
+    nodes.push(
+      <div key={`tbl-${key}`} className="overflow-x-auto mb-6">
+        <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+          <thead className="bg-indigo-50">
+            <tr>
+              {headerCells.map((h, idx) => (
+                <th key={idx} className="px-4 py-2.5 text-left text-xs font-bold text-indigo-700 uppercase tracking-wide border-b border-slate-200">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                {row.map((cell, ci) => (
+                  <td key={ci} className="px-4 py-2.5 text-slate-700 border-b border-slate-100">{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+    tableBuffer = [];
+  };
+
+  const isTableRow = (line: string) => line.trim().startsWith('|') && line.trim().endsWith('|');
+
   const lines = articleText.split('\n');
   lines.forEach((line, i) => {
-    if (line.startsWith('## ')) {
-      flushPara(i); flushList(i);
+    if (isTableRow(line)) {
+      flushPara(i); flushList(i); flushOrdered(i);
+      tableBuffer.push(line);
+    } else if (line.startsWith('## ')) {
+      flushPara(i); flushList(i); flushOrdered(i); flushTable(i);
       nodes.push(
-        <h2
-          key={`h2-${i}`}
-          className="text-xl font-bold text-slate-900 mt-8 mb-3 pb-2 border-b border-slate-100"
-        >
+        <h2 key={`h2-${i}`} className="text-xl font-bold text-slate-900 mt-8 mb-3 pb-2 border-b border-slate-100">
           {line.slice(3)}
         </h2>
       );
     } else if (line.startsWith('### ')) {
-      flushPara(i); flushList(i);
+      flushPara(i); flushList(i); flushOrdered(i); flushTable(i);
       nodes.push(
-        <h3 key={`h3-${i}`} className="text-base font-semibold text-slate-800 mt-5 mb-2">
-          {line.slice(4)}
-        </h3>
+        <h3 key={`h3-${i}`} className="text-base font-semibold text-slate-800 mt-5 mb-2">{line.slice(4)}</h3>
       );
     } else if (line.trim() === '') {
-      flushPara(i); flushList(i);
+      flushPara(i); flushList(i); flushOrdered(i); flushTable(i);
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
-      flushPara(i);
+      flushPara(i); flushTable(i); flushOrdered(i);
       listBuffer.push(line.slice(2));
+    } else if (/^\d+\.\s/.test(line)) {
+      flushPara(i); flushTable(i); flushList(i);
+      orderedBuffer.push(line.replace(/^\d+\.\s/, ''));
     } else {
-      flushList(i);
+      flushList(i); flushOrdered(i); flushTable(i);
       paraBuffer.push(line);
     }
   });
   flushPara(lines.length);
   flushList(lines.length);
+  flushOrdered(lines.length);
+  flushTable(lines.length);
   return nodes;
 }
 
@@ -152,10 +197,34 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
 // ─── Main component ──────────────────────────────────────────────────────────
 
 const SeoArticleGenerator: React.FC = () => {
-  const [topic, setTopic] = useState('');
+  const [topic, setTopic] = useState(() => sessionStorage.getItem('mi_blog_topic') || '');
+  const [brandName, setBrandName] = useState(() => sessionStorage.getItem('mi_blog_brand') || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<SeoArticleResult | null>(null);
+  const [activeBrand, setActiveBrand] = useState(() => sessionStorage.getItem('mi_blog_active_brand') || '');
+  const [result, setResult] = useState<SeoArticleResult | null>(() => {
+    try { const s = sessionStorage.getItem('mi_blog_result'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+
+  const [faqs, setFaqs] = useState<FaqItem[]>(() => {
+    try { const s = sessionStorage.getItem('mi_blog_faqs'); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+  const [faqLoading, setFaqLoading] = useState(false);
+  const [faqError, setFaqError] = useState('');
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  // Persist to sessionStorage on change
+  useEffect(() => { sessionStorage.setItem('mi_blog_topic', topic); }, [topic]);
+  useEffect(() => { sessionStorage.setItem('mi_blog_brand', brandName); }, [brandName]);
+  useEffect(() => { sessionStorage.setItem('mi_blog_active_brand', activeBrand); }, [activeBrand]);
+  useEffect(() => {
+    if (result) sessionStorage.setItem('mi_blog_result', JSON.stringify(result));
+    else sessionStorage.removeItem('mi_blog_result');
+  }, [result]);
+  useEffect(() => {
+    if (faqs.length) sessionStorage.setItem('mi_blog_faqs', JSON.stringify(faqs));
+    else sessionStorage.removeItem('mi_blog_faqs');
+  }, [faqs]);
 
   const allKeywords = result
     ? [result.primaryKeyword, ...result.secondaryKeywords, ...result.lsiKeywords]
@@ -166,15 +235,34 @@ const SeoArticleGenerator: React.FC = () => {
     setLoading(true);
     setError('');
     setResult(null);
+    setFaqs([]);
+    setFaqError('');
+    const brand = brandName.trim();
+    setActiveBrand(brand);
     try {
-      const data = await generateSeoBlogArticle(topic.trim());
+      const data = await generateSeoBlogArticle(topic.trim(), brand || undefined);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate article. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [topic]);
+  }, [topic, brandName]);
+
+  const handleGenerateFaq = useCallback(async () => {
+    if (!result) return;
+    setFaqLoading(true);
+    setFaqError('');
+    setFaqs([]);
+    try {
+      const data = await generateFaqFromArticle(topic.trim(), result.article);
+      setFaqs(data);
+    } catch (err) {
+      setFaqError(err instanceof Error ? err.message : 'Failed to generate FAQs. Please try again.');
+    } finally {
+      setFaqLoading(false);
+    }
+  }, [result, topic]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleGenerate();
@@ -196,37 +284,69 @@ const SeoArticleGenerator: React.FC = () => {
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-            Post Topic / Campaign
-          </label>
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={topic}
-              onChange={e => setTopic(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder='e.g., "Best AI marketing tools for startups"'
-              disabled={loading}
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-60 transition-all"
-            />
-            <button
-              onClick={handleGenerate}
-              disabled={loading || !topic.trim()}
-              className="bg-indigo-600 text-white px-7 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+              Post Topic / Campaign
+            </label>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={topic}
+                onChange={e => setTopic(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder='e.g., "Best AI marketing tools for startups"'
+                disabled={loading}
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-60 transition-all"
+              />
+              <button
+                onClick={handleGenerate}
+                disabled={loading || !topic.trim()}
+                className="bg-indigo-600 text-white px-7 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Generating...
+                  </span>
+                ) : (
+                  '✦ Generate Article'
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Brand Boost input */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Your Brand / Website <span className="normal-case font-normal">(Optional)</span>
+              </label>
+              <span className="flex items-center gap-1 text-[11px] font-bold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full">
+                ⚡ Brand Boost
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                value={brandName}
+                onChange={e => setBrandName(e.target.value)}
+                placeholder="e.g. My CA Academy, mywebsite.com"
+                disabled={loading}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-10 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent disabled:opacity-60 transition-all"
+              />
+              {brandName.trim() && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                  <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
-                  Generating...
                 </span>
-              ) : (
-                '✦ Generate Article'
               )}
-            </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">Your brand will be featured prominently in the article</p>
           </div>
         </div>
 
@@ -255,6 +375,17 @@ const SeoArticleGenerator: React.FC = () => {
       {/* ── Results ────────────────────────────────────────────────────── */}
       {result && !loading && (
         <div className="space-y-6 animate-in fade-in duration-500">
+
+          {/* Brand Boost active banner */}
+          {activeBrand && (
+            <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-xl px-4 py-2">
+              <span>⚡</span>
+              <span className="text-xs font-semibold text-purple-700">
+                Brand Boost Active — {activeBrand} featured prominently
+              </span>
+              <span className="ml-auto text-xs text-purple-500">+Visibility</span>
+            </div>
+          )}
 
           {/* Stat cards row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -287,18 +418,18 @@ const SeoArticleGenerator: React.FC = () => {
           </div>
 
           {/* Main two-column layout */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
 
             {/* ── Article (2/3) ────────────────────────────────────────── */}
-            <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-slate-50">
+            <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col max-h-[1300px]">
+              <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-slate-50 shrink-0 rounded-t-2xl">
                 <div>
                   <h4 className="font-bold text-slate-900">Full SEO Article</h4>
                   <p className="text-xs text-slate-500 mt-0.5">Keywords highlighted in yellow</p>
                 </div>
                 <CopyButton text={result.article} />
               </div>
-              <div className="px-8 py-6 max-h-[680px] overflow-y-auto">
+              <div className="px-8 py-6 overflow-y-auto flex-1">
                 <h1 className="text-2xl font-black text-slate-900 mb-5 leading-tight">
                   {result.title}
                 </h1>
@@ -307,7 +438,7 @@ const SeoArticleGenerator: React.FC = () => {
             </div>
 
             {/* ── Right sidebar (1/3) ──────────────────────────────────── */}
-            <div className="space-y-5">
+            <div className="space-y-5 sticky top-6 overflow-y-auto max-h-[1300px]">
 
               {/* SEO Score ring + grade */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center">
@@ -413,6 +544,98 @@ const SeoArticleGenerator: React.FC = () => {
               <p className="text-slate-700 leading-relaxed text-[15px]">{result.rankingExplanation}</p>
             </div>
           </div>
+
+          {/* ── Generate FAQ button ───────────────────────────────────── */}
+          {faqs.length === 0 && (
+            <div className="flex justify-center">
+              <button
+                onClick={handleGenerateFaq}
+                disabled={faqLoading}
+                className="flex items-center gap-2.5 bg-white border-2 border-indigo-200 hover:border-indigo-500 hover:bg-indigo-50 text-indigo-700 font-bold px-8 py-3.5 rounded-2xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                {faqLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Generating FAQs...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    ✦ Generate FAQ Section
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {faqError && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm text-center">
+              {faqError}
+            </div>
+          )}
+
+          {/* ── FAQ Section ───────────────────────────────────────────── */}
+          {faqs.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">
+                    <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900">SEO-Friendly FAQ Section</h4>
+                    <p className="text-xs text-slate-500">{faqs.length} questions · optimized for Featured Snippets & People Also Ask</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CopyButton text={faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')} />
+                  <button
+                    onClick={handleGenerateFaq}
+                    disabled={faqLoading}
+                    className="text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {faqLoading ? 'Regenerating…' : '↻ Regenerate'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {faqs.map((faq, idx) => (
+                  <div key={idx} className="px-8">
+                    <button
+                      onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
+                      className="w-full flex items-center justify-between py-4 text-left gap-4"
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-800">{faq.question}</span>
+                      </span>
+                      <svg
+                        className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${openFaq === idx ? 'rotate-180' : ''}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {openFaq === idx && (
+                      <div className="pb-5 text-[15px] text-slate-600 leading-relaxed pl-9 -mt-1">
+                        {faq.answer}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
       )}

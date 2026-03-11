@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getYouTubeChannel, YouTubeChannelData, HistoryType } from '../../../../services/socialBladeService';
 import ChannelOverviewCard from './ChannelOverviewCard';
 import CreatorStatsGrid    from './CreatorStatsGrid';
@@ -52,11 +52,21 @@ function LoadingSkeleton() {
 const EXAMPLES = ['@SocialBlade', '@MrBeast', '@PewDiePie'];
 
 export default function YouTubeChannelAnalyzer() {
-  const [query,   setQuery]   = useState('');
-  const [history, setHistory] = useState<HistoryType>('default');
-  const [data,    setData]    = useState<YouTubeChannelData | null>(null);
+  const [query,   setQuery]   = useState(() => localStorage.getItem('mi_yt_query') || '');
+  const [history, setHistory] = useState<HistoryType>(() => (localStorage.getItem('mi_yt_history') as HistoryType) || 'default');
+  const [data,    setData]    = useState<YouTubeChannelData | null>(() => {
+    try { const s = sessionStorage.getItem('mi_yt_data'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
+
+  // Persist query + history to localStorage, channel data to sessionStorage
+  useEffect(() => { localStorage.setItem('mi_yt_query', query); }, [query]);
+  useEffect(() => { localStorage.setItem('mi_yt_history', history); }, [history]);
+  useEffect(() => {
+    if (data) sessionStorage.setItem('mi_yt_data', JSON.stringify(data));
+    else sessionStorage.removeItem('mi_yt_data');
+  }, [data]);
 
   const analyze = async (raw = query) => {
     const q = parseYouTubeInput(raw);

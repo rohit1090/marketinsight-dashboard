@@ -208,6 +208,7 @@ const App: React.FC = () => {
       <Sidebar
         currentView={currentView}
         onViewChange={(v: ViewMode) => { setCurrentView(v); localStorage.setItem('mi_active_view', v); }}
+        onLogout={handleLogout}
       />
       
       <main className="flex-1 overflow-y-auto px-8 py-8 lg:px-12 lg:py-10">
