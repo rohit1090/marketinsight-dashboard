@@ -21,6 +21,10 @@ export default defineConfig(({ mode }) => {
             target: 'https://matrix.sbapis.com',
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api\/socialblade/, '/b'),
+            headers: {
+              'CLIENTID': env.VITE_SB_CLIENT_ID || '',
+              'token':    env.VITE_SB_TOKEN     || '',
+            },
           },
         },
       },
