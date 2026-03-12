@@ -199,19 +199,19 @@ export const runSeoAudit = async (domain: string): Promise<{ analysis: string; s
 const JSON_SCHEMA = `
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
-  "title": "Compelling H1 title with year 2026",
+  "title": "Question-style H1 title (e.g. 'What Are the Best X in 2026?')",
   "seoTitle": "SEO meta title under 60 characters",
   "metaDescription": "Meta description 150-160 chars with main keyword",
   "urlSlug": "url-friendly-slug-with-main-keyword",
   "primaryKeyword": "main keyword phrase",
   "secondaryKeywords": ["kw1", "kw2", "kw3", "kw4", "kw5"],
   "lsiKeywords": ["lsi1", "lsi2", "lsi3", "lsi4", "lsi5", "lsi6"],
-  "article": "FULL ARTICLE — minimum 1000 words. Use ## H2 and ### H3 headings. Include all required sections.",
+  "article": "FULL ARTICLE following AEO structure — minimum 1000 words. Question-based H2/H3 headings. Direct answers before explanations. Includes TLDR and author section.",
   "seoScore": 88,
   "readingTime": 8,
   "wordCount": 1200,
   "keywordDensity": 1.8,
-  "rankingExplanation": "Detailed 150+ word explanation covering: (1) Search intent alignment, (2) Keyword placement, (3) E-E-A-T signals, (4) Semantic SEO, (5) Heading structure."
+  "rankingExplanation": "Detailed 150+ word explanation covering: (1) Search intent alignment, (2) Keyword placement, (3) E-E-A-T signals, (4) Semantic SEO, (5) AEO/featured snippet optimization."
 }`;
 
 /** Shared SEO rules appended to every prompt template */
@@ -226,6 +226,58 @@ const SEO_RULES = `
 - Include semantic keywords and long-tail keyword variations
 - Include featured snippet style paragraphs
 - Helpful, conversational but professional tone`;
+
+/** AEO (Answer Engine Optimization) structure — injected into every prompt */
+const AEO_STRUCTURE = `
+━━━ MANDATORY AEO ARTICLE STRUCTURE ━━━
+Every article MUST follow this exact structure in the "article" field:
+
+1. H1 QUESTION TITLE
+   Restate the topic as a natural question.
+   Example: "What Are the Best CA Coaching Institutes in Bangalore in 2026?"
+
+2. DIRECT ANSWER (50–80 words)
+   Immediately below the title, provide a concise direct answer to the question.
+   This is used by AI answer engines and Google featured snippets.
+   Example: "The best CA coaching institutes in Bangalore include [Name], known for..."
+
+3. TABLE OF CONTENTS
+   List 4–6 section titles as a bullet list so readers can navigate.
+   Example:
+   • What Makes a Great CA Coaching Institute?
+   • Top CA Coaching Institutes in Bangalore
+   • How to Choose the Right Institute
+   • TLDR Summary
+
+4. SECTION HEADINGS — Must be question-based
+   Each H2 section must start with a question.
+   Example:
+   ## What Makes a Great CA Coaching Institute?
+   ## Which Are the Top CA Coaching Institutes in Bangalore?
+   ## How Do You Choose the Right CA Coaching?
+
+5. SECTION CONTENT PATTERN — for every section:
+   a) Short direct answer (1–2 sentences)
+   b) Detailed explanation
+   c) Bullet points or numbered list where helpful
+   d) Optional image placeholder: [Illustration: relevant description]
+
+6. TLDR SUMMARY — before the conclusion
+   Provide a bullet-point summary of key takeaways.
+   Example:
+   **TLDR**
+   • Best overall: [Name]
+   • Best budget option: [Name]
+   • Best for working professionals: [Name]
+
+7. AUTHOR / EXPERT SECTION — at the very end
+   Add a credibility line.
+   Example:
+   ---
+   *Author: Research & Editorial Team | Expertise: [relevant domain]*
+
+Do NOT use generic non-question headings like "Introduction" or "Conclusion" as H2s.
+Instead write: "What Is [Topic] and Why Does It Matter?" and "Which Option Is Right for You?"`;
 
 /** Global AI quality rules injected into every prompt */
 const GLOBAL_AI_RULES = `
@@ -307,6 +359,7 @@ ${brandName ? `(Place "${brandName}" in the first row)` : '(Fill with all busine
 
 ## Conclusion
 Final recommendation based on different needs and budgets.
+${AEO_STRUCTURE}
 ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
@@ -349,6 +402,7 @@ For EACH product:
 
 ## Conclusion
 Summary of top picks with final recommendation for different buyer types.
+${AEO_STRUCTURE}
 ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
@@ -388,6 +442,7 @@ Key ideas explained in simple language. Why this knowledge matters. Key terminol
 
 ## Conclusion
 Summary of the learning journey. Encouragement. Clear next steps.
+${AEO_STRUCTURE}
 ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
@@ -424,6 +479,7 @@ What research or experts say. Statistics and data where available. Authoritative
 
 ## Conclusion
 Summary of key takeaways. Motivational closing. Call to action.
+${AEO_STRUCTURE}
 ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
@@ -449,6 +505,7 @@ INSTRUCTIONS:
 - Include an introduction, 4–6 well-structured body sections, and a conclusion
 - Add a comparison table or step list where it would genuinely help the reader
 - Use real names, real data, and real examples — never placeholders
+${AEO_STRUCTURE}
 ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
@@ -552,6 +609,7 @@ Choose ONE structure. Use natural, topic-specific headings — do NOT use generi
 - Conclusion must provide clear, actionable next steps
 
 Do NOT generate FAQs.
+${AEO_STRUCTURE}
 ${JSON_SCHEMA}`;
 }
 
