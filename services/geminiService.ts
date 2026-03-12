@@ -8,6 +8,7 @@ import {
   formatLocalBusinessResearch,
   formatSearchResearch,
 } from "./researchService";
+import { analyzeCompetitors, formatCompetitorAnalysis } from "./serpAnalysisService";
 
 export interface SeoArticleResult {
   title: string;
@@ -268,7 +269,7 @@ You MUST integrate this brand naturally throughout the article:
 
 // ── Individual template functions ──────────────────────────────────────────────
 
-function buildLocalBusinessPrompt(topic: string, brandName?: string, researchBlock?: string): string {
+function buildLocalBusinessPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
   return `You are an expert SEO writer and local market researcher.
 
 TOPIC: "${topic}"
@@ -277,6 +278,7 @@ ARTICLE TYPE: Local business discovery guide.
 ${GLOBAL_AI_RULES}
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE RESEARCH DATA — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Base the article on the businesses listed above. Do NOT invent fake businesses. If a business has "featured: true", list it first.\n` : `━━━ RESEARCH NOTE ━━━\nNo live research data was fetched. Use your training knowledge of commonly known businesses in the city. If unsure of real names, write a section called "Examples of Popular Options".\n`}
+${competitorBlock ? `${competitorBlock}\n` : ''}
 ━━━ ARTICLE STRUCTURE ━━━
 
 ## Introduction (120–150 words)
@@ -309,12 +311,13 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildProductPrompt(topic: string, brandName?: string, researchBlock?: string): string {
+function buildProductPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
   return `You are an expert product reviewer and SEO content writer with deep knowledge of consumer products, e-commerce, and buying guides.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Analyze these real search results to identify actual products. Do NOT invent fake product names.\n` : ''}
+${competitorBlock ? `${competitorBlock}\n` : ''}
 ARTICLE STRUCTURE — follow exactly:
 
 ## Introduction (150–200 words)
@@ -350,12 +353,13 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildEducationalPrompt(topic: string, brandName?: string, researchBlock?: string): string {
+function buildEducationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
   return `You are an expert educational content writer and SEO specialist who creates comprehensive, beginner-friendly guides.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Use the snippets above to extract real exam details, dates, syllabus, and eligibility. Do NOT invent information.\n` : ''}
+${competitorBlock ? `${competitorBlock}\n` : ''}
 STRICT RULES FOR THIS CATEGORY:
 - Do NOT include business listings, institute comparisons, or price tables.
 - Focus entirely on knowledge, preparation strategy, and actionable guidance.
@@ -388,12 +392,13 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildInformationalPrompt(topic: string, brandName?: string, researchBlock?: string): string {
+function buildInformationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
   return `You are an expert informational content writer and SEO specialist who creates authoritative, well-researched articles.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Use the snippets above to ground your article in real information. Reference data and insights from the research.\n` : ''}
+${competitorBlock ? `${competitorBlock}\n` : ''}
 ARTICLE STRUCTURE — follow exactly:
 
 ## Introduction (150–200 words)
@@ -423,12 +428,13 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildDefaultPrompt(topic: string, brandName?: string, researchBlock?: string): string {
+function buildDefaultPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
   return `You are an expert SEO content writer and researcher. Analyze the topic and automatically determine the best article structure.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n` : ''}
+${competitorBlock ? `${competitorBlock}\n` : ''}
 INSTRUCTIONS:
 - Read the topic carefully and identify what type of content it needs (listicle, guide, review, comparison, informational, local, etc.)
 - Choose ONE of these structures that best fits the topic:
@@ -454,13 +460,14 @@ const buildBlogPrompt = (
   category?: string | null,
   brandName?: string,
   researchBlock?: string,
+  competitorBlock?: string,
 ): string => {
   switch (category) {
-    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName, researchBlock);
-    case 'products':         return buildProductPrompt(topic, brandName, researchBlock);
-    case 'educational':      return buildEducationalPrompt(topic, brandName, researchBlock);
-    case 'informational':    return buildInformationalPrompt(topic, brandName, researchBlock);
-    default:                 return buildDefaultPrompt(topic, brandName, researchBlock);
+    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName, researchBlock, competitorBlock);
+    case 'products':         return buildProductPrompt(topic, brandName, researchBlock, competitorBlock);
+    case 'educational':      return buildEducationalPrompt(topic, brandName, researchBlock, competitorBlock);
+    case 'informational':    return buildInformationalPrompt(topic, brandName, researchBlock, competitorBlock);
+    default:                 return buildDefaultPrompt(topic, brandName, researchBlock, competitorBlock);
   }
 };
 
@@ -491,8 +498,17 @@ async function fetchResearchBlock(topic: string, category?: string | null, brand
       }
     }
   } catch (err) {
-    // Research is best-effort — generation continues without it if fetch fails
     console.warn('Research fetch failed (continuing without it):', err);
+    return '';
+  }
+}
+
+async function fetchCompetitorBlock(topic: string): Promise<string> {
+  try {
+    const analysis = await analyzeCompetitors(topic);
+    return formatCompetitorAnalysis(analysis);
+  } catch (err) {
+    console.warn('Competitor analysis failed (continuing without it):', err);
     return '';
   }
 }
@@ -502,11 +518,14 @@ export const generateSeoBlogArticle = async (
   brandName?: string,
   category?: string | null,
 ): Promise<SeoArticleResult> => {
-  // Step 1: Fetch real Google research data for this topic + category
-  const researchBlock = await fetchResearchBlock(topic, category, brandName);
+  // Step 1: Run category research + competitor SERP analysis in parallel
+  const [researchBlock, competitorBlock] = await Promise.all([
+    fetchResearchBlock(topic, category, brandName),
+    fetchCompetitorBlock(topic),
+  ]);
 
-  // Step 2: Build prompt with research injected
-  const prompt = buildBlogPrompt(topic, category, brandName, researchBlock);
+  // Step 2: Build prompt with both research + competitor data injected
+  const prompt = buildBlogPrompt(topic, category, brandName, researchBlock, competitorBlock);
 
   // Step 3: Generate article via Groq
   try {

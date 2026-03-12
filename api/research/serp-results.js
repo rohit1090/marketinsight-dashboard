@@ -1,0 +1,41 @@
+// /api/research/serp-results.js
+// Fetches top 10 Google organic results for competitor SEO analysis.
+// Always uses engine=google (standard search) — this is for SERP structure analysis,
+// not category research. Category routing (google_local vs google) is handled separately.
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { topic } = req.body || {};
+  if (!topic) return res.status(400).json({ error: 'Missing topic' });
+
+  const apiKey = process.env.SERPAPI_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'SERPAPI_KEY is not configured on the server' });
+
+  try {
+    const params = new URLSearchParams({
+      engine: 'google',
+      q: topic,
+      api_key: apiKey,
+      num: '10',
+      hl: 'en',
+    });
+
+    const response = await fetch(`https://serpapi.com/search.json?${params}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: data.error || 'SerpAPI error' });
+    }
+
+    const results = (data.organic_results || []).slice(0, 10).map((r) => ({
+      title: r.title || '',
+      link: r.link || '',
+      snippet: r.snippet || '',
+    }));
+
+    return res.status(200).json({ results });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+}
