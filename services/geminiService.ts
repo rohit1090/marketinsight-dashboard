@@ -1,5 +1,13 @@
 
 import { DashboardData, LiveMarketReport } from "../types";
+import {
+  fetchLocalBusinesses,
+  fetchProductResults,
+  fetchEducationResults,
+  fetchInformationalResults,
+  formatLocalBusinessResearch,
+  formatSearchResearch,
+} from "./researchService";
 
 export interface SeoArticleResult {
   title: string;
@@ -260,23 +268,15 @@ You MUST integrate this brand naturally throughout the article:
 
 // ── Individual template functions ──────────────────────────────────────────────
 
-function buildLocalBusinessPrompt(topic: string, brandName?: string): string {
+function buildLocalBusinessPrompt(topic: string, brandName?: string, researchBlock?: string): string {
   return `You are an expert SEO writer and local market researcher.
 
 TOPIC: "${topic}"
 
 ARTICLE TYPE: Local business discovery guide.
-
-━━━ RESEARCH REQUIREMENT ━━━
-Before writing, assume you performed a Google search for the topic.
-Use information commonly found in sources such as:
-• Google Maps • Google Business listings • Yelp • Justdial • Sulekha • UrbanPro • official business websites
-
-List businesses that are commonly known or realistically found in the city.
-Do NOT invent fake businesses.
-If you are not confident about exact businesses, write a section called "Examples of Popular Options" and describe typical businesses without fake names.
 ${GLOBAL_AI_RULES}
 ${brandBoostBlock(brandName)}
+${researchBlock ? `━━━ GOOGLE RESEARCH DATA — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Base the article on the businesses listed above. Do NOT invent fake businesses. If a business has "featured: true", list it first.\n` : `━━━ RESEARCH NOTE ━━━\nNo live research data was fetched. Use your training knowledge of commonly known businesses in the city. If unsure of real names, write a section called "Examples of Popular Options".\n`}
 ━━━ ARTICLE STRUCTURE ━━━
 
 ## Introduction (120–150 words)
@@ -309,11 +309,12 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildProductPrompt(topic: string, brandName?: string): string {
+function buildProductPrompt(topic: string, brandName?: string, researchBlock?: string): string {
   return `You are an expert product reviewer and SEO content writer with deep knowledge of consumer products, e-commerce, and buying guides.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
+${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Analyze these real search results to identify actual products. Do NOT invent fake product names.\n` : ''}
 ARTICLE STRUCTURE — follow exactly:
 
 ## Introduction (150–200 words)
@@ -349,11 +350,12 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildEducationalPrompt(topic: string, brandName?: string): string {
+function buildEducationalPrompt(topic: string, brandName?: string, researchBlock?: string): string {
   return `You are an expert educational content writer and SEO specialist who creates comprehensive, beginner-friendly guides.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
+${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Use the snippets above to extract real exam details, dates, syllabus, and eligibility. Do NOT invent information.\n` : ''}
 STRICT RULES FOR THIS CATEGORY:
 - Do NOT include business listings, institute comparisons, or price tables.
 - Focus entirely on knowledge, preparation strategy, and actionable guidance.
@@ -386,11 +388,12 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildInformationalPrompt(topic: string, brandName?: string): string {
+function buildInformationalPrompt(topic: string, brandName?: string, researchBlock?: string): string {
   return `You are an expert informational content writer and SEO specialist who creates authoritative, well-researched articles.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
+${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Use the snippets above to ground your article in real information. Reference data and insights from the research.\n` : ''}
 ARTICLE STRUCTURE — follow exactly:
 
 ## Introduction (150–200 words)
@@ -420,11 +423,12 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildDefaultPrompt(topic: string, brandName?: string): string {
+function buildDefaultPrompt(topic: string, brandName?: string, researchBlock?: string): string {
   return `You are an expert SEO content writer and researcher. Analyze the topic and automatically determine the best article structure.
 ${GLOBAL_AI_RULES}
 TOPIC: "${topic}"
 ${brandBoostBlock(brandName)}
+${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n` : ''}
 INSTRUCTIONS:
 - Read the topic carefully and identify what type of content it needs (listicle, guide, review, comparison, informational, local, etc.)
 - Choose ONE of these structures that best fits the topic:
@@ -447,21 +451,64 @@ ${JSON_SCHEMA}`;
 
 const buildBlogPrompt = (
   topic: string,
-  category?: 'local_business' | 'product_reviews' | 'educational' | 'informational' | string | null,
+  category?: string | null,
   brandName?: string,
+  researchBlock?: string,
 ): string => {
   switch (category) {
-    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName);
-    case 'products':         return buildProductPrompt(topic, brandName);
-    case 'educational':      return buildEducationalPrompt(topic, brandName);
-    case 'informational':    return buildInformationalPrompt(topic, brandName);
-    default:                 return buildDefaultPrompt(topic, brandName);
+    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName, researchBlock);
+    case 'products':         return buildProductPrompt(topic, brandName, researchBlock);
+    case 'educational':      return buildEducationalPrompt(topic, brandName, researchBlock);
+    case 'informational':    return buildInformationalPrompt(topic, brandName, researchBlock);
+    default:                 return buildDefaultPrompt(topic, brandName, researchBlock);
   }
 };
 
-export const generateSeoBlogArticle = async (topic: string, brandName?: string, category?: string | null): Promise<SeoArticleResult> => {
-  const prompt = buildBlogPrompt(topic, category, brandName);
+// ── Research fetch + prompt injection ─────────────────────────────────────────
 
+async function fetchResearchBlock(topic: string, category?: string | null, brandName?: string): Promise<string> {
+  try {
+    switch (category) {
+      case 'local_business': {
+        const data = await fetchLocalBusinesses(topic, brandName);
+        return formatLocalBusinessResearch(data);
+      }
+      case 'products': {
+        const data = await fetchProductResults(topic);
+        return formatSearchResearch(data, 'Product search results');
+      }
+      case 'educational': {
+        const data = await fetchEducationResults(topic);
+        return formatSearchResearch(data, 'Educational / exam information');
+      }
+      case 'informational': {
+        const data = await fetchInformationalResults(topic);
+        return formatSearchResearch(data, 'Informational search results');
+      }
+      default: {
+        const data = await fetchInformationalResults(topic);
+        return formatSearchResearch(data, 'General search results');
+      }
+    }
+  } catch (err) {
+    // Research is best-effort — generation continues without it if fetch fails
+    console.warn('Research fetch failed (continuing without it):', err);
+    return '';
+  }
+}
+
+export const generateSeoBlogArticle = async (
+  topic: string,
+  brandName?: string,
+  category?: string | null,
+): Promise<SeoArticleResult> => {
+  // Step 1: Fetch real Google research data for this topic + category
+  const researchBlock = await fetchResearchBlock(topic, category, brandName);
+
+  // Step 2: Build prompt with research injected
+  const prompt = buildBlogPrompt(topic, category, brandName, researchBlock);
+
+  // Step 3: Generate article via Groq
   try {
     const response = await callGroq(
       [{ role: 'user', content: prompt }],
