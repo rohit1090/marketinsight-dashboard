@@ -6,6 +6,8 @@ export interface LocalBusiness {
   address: string;
   rating: number | null;
   reviews: number | null;
+  type: string;
+  phone: string;
   website: string;
   featured: boolean;
 }
@@ -60,9 +62,12 @@ export function formatLocalBusinessResearch(data: LocalBusinessResearch): string
     const tag = b.featured ? ' ⭐ [FEATURED — list this business FIRST]' : '';
     const rating = b.rating != null ? ` | Rating: ${b.rating}` : '';
     const reviews = b.reviews != null ? ` (${b.reviews} reviews)` : '';
-    return `${i + 1}. ${b.name}${tag}\n   Address: ${b.address || 'N/A'}${rating}${reviews}${b.website ? `\n   Website: ${b.website}` : ''}`;
+    const type = b.type ? `\n   Type: ${b.type}` : '';
+    const phone = b.phone ? `\n   Phone: ${b.phone}` : '';
+    const website = b.website ? `\n   Website: ${b.website}` : '';
+    return `${i + 1}. ${b.name}${tag}\n   Address: ${b.address || 'N/A'}${rating}${reviews}${type}${phone}${website}`;
   });
-  return `━━━ GOOGLE MAPS RESEARCH — Real businesses found for this topic ━━━\n${lines.join('\n\n')}`;
+  return `━━━ GOOGLE LOCAL RESEARCH (google_local engine) — Real businesses found ━━━\n${lines.join('\n\n')}`;
 }
 
 export function formatSearchResearch(data: SearchResearch, label: string): string {

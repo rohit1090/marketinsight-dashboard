@@ -1,5 +1,6 @@
 // /api/research/local-business.js
-// Fetches real businesses from Google Maps via SerpAPI.
+// Fetches real local businesses via SerpAPI google_local engine (Google Places).
+// ONLY used for "Local Business / City" category — never for products/educational/informational.
 // Returns top 8 results, with optional brandName injected first.
 
 export default async function handler(req, res) {
@@ -13,7 +14,7 @@ export default async function handler(req, res) {
 
   try {
     const params = new URLSearchParams({
-      engine: 'google_maps',
+      engine: 'google_local',
       q: topic,
       api_key: apiKey,
       hl: 'en',
@@ -27,10 +28,12 @@ export default async function handler(req, res) {
     }
 
     const raw = (data.local_results || []).slice(0, 8).map((b) => ({
-      name: b.title || b.name || '',
+      name: b.title || '',
       address: b.address || '',
       rating: b.rating ?? null,
       reviews: b.reviews ?? null,
+      type: b.type || '',
+      phone: b.phone || '',
       website: b.website || '',
       featured: false,
     }));
