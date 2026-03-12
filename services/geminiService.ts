@@ -184,115 +184,283 @@ export const runSeoAudit = async (domain: string): Promise<{ analysis: string; s
   }
 };
 
-// ── Enhanced prompt builder ────────────────────────────────────────────────────
+// ── Prompt builders ────────────────────────────────────────────────────────────
 
-const buildBlogPrompt = (topic: string, brandName?: string): string => {
-  return `
-You are an expert SEO content writer and local business researcher with deep knowledge of coaching institutes, service providers, and businesses across India.
-
-TOPIC: "${topic}"
-${brandName ? `
-BRAND BOOST INSTRUCTIONS (HIGHEST PRIORITY):
-The user's brand is: "${brandName}"
-
-You MUST integrate this brand throughout the article:
-
-1. FEATURED FIRST: When listing coaching centers or businesses, ALWAYS mention "${brandName}" as the FIRST option with the most detailed description (4-5 sentences minimum).
-
-2. INTRODUCTION MENTION: Naturally mention "${brandName}" in the introduction paragraph as a top choice.
-
-3. COMPARISON TABLE: "${brandName}" must appear in the first row of any comparison table with the best ratings.
-
-4. RECOMMENDATION: In the conclusion, specifically recommend "${brandName}" as the top pick.
-
-5. NATURAL INTEGRATION: Weave "${brandName}" naturally throughout — do not make it look like an advertisement. Write it as if it is genuinely the best option based on research.
-
-6. FAQ MENTION: At least 1 FAQ answer should reference "${brandName}" as an example.
-
-For "${brandName}" specifically write:
-- Location: describe as conveniently located
-- Faculty: highly experienced and qualified
-- Results: excellent pass rates and student success
-- Features: personalized attention, comprehensive study material, mock tests, doubt clearing sessions
-- Fees: competitive and value for money
-` : ''}
-CRITICAL RULES — FOLLOW STRICTLY:
-
-━━━ RULE 1: REAL BUSINESSES ONLY ━━━
-- Always mention REAL, ACTUAL businesses/institutes/centers relevant to the topic and city mentioned
-- Include real locality/area names within the city
-- Include approximate fee ranges based on market research
-- NEVER use placeholder names like "Institute A", "Coaching Center 1", "XYZ Academy" etc.
-- If you are not sure about a specific institute, mention well-known national brands present in that city
-
-━━━ RULE 2: ARTICLE STRUCTURE ━━━
-Build the article field using this exact structure:
-
-## Introduction (150-200 words)
-- What the topic is about, why it matters, what the reader will learn
-
-## Why [City Name] for [Topic] (100-150 words)
-- Why this city is a hub: job market, demand, opportunities
-
-## Top [8-10] [Topic] in [City] — Detailed Reviews
-For EACH real institute/business:
-### [Real Full Name of Institute]
-- 📍 Location: [Specific area, City]
-- ⭐ Best For: [Who should choose this]
-- 📚 Courses Offered: [List relevant courses]
-- 💰 Fee Range: [Approximate fees]
-- ✅ Key Highlights: [3-4 bullet points]
-- 🕒 Batch Timings: [Morning/Evening/Weekend]
-
-## Fees Comparison Table
-Include a markdown table:
-| Institute Name | Location | Fee Range | Mode | Rating |
-|----------------|----------|-----------|------|--------|
-(real data for all institutes listed above)
-
-## How to Choose the Right [Topic] in [City]
-- 5 factors to consider (numbered list)
-- Questions to ask before enrolling
-- Red flags to avoid
-
-## Conclusion
-- Summary of top picks
-- Final recommendation based on different needs
-
-━━━ RULE 3: SEO REQUIREMENTS ━━━
-- Minimum 1500 words in the article field
-- Use main keyword naturally 8-10 times
-- First paragraph must contain the main keyword
-- Use proper ## H2 and ### H3 hierarchy
-- Add year 2025 where relevant for freshness
-- Separate all sections/paragraphs with blank lines
-
-━━━ RULE 4: CONTENT QUALITY ━━━
-- Helpful, conversational but professional tone
-- Specific details that show genuine research
-- Practical tips readers can use immediately
-- Honest pros and cons when comparing options
-
+/** Shared JSON output schema appended to every prompt template */
+const JSON_SCHEMA = `
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
-  "title": "Compelling H1 title with city and year 2025",
+  "title": "Compelling H1 title with year 2026",
   "seoTitle": "SEO meta title under 60 characters",
   "metaDescription": "Meta description 150-160 chars with main keyword",
   "urlSlug": "url-friendly-slug-with-main-keyword",
   "primaryKeyword": "main keyword phrase",
   "secondaryKeywords": ["kw1", "kw2", "kw3", "kw4", "kw5"],
   "lsiKeywords": ["lsi1", "lsi2", "lsi3", "lsi4", "lsi5", "lsi6"],
-  "article": "FULL ARTICLE — minimum 1500 words using structure above. Real institute names only. Include comparison table.",
+  "article": "FULL ARTICLE — minimum 1000 words. Use ## H2 and ### H3 headings. Include all required sections.",
   "seoScore": 88,
   "readingTime": 8,
-  "wordCount": 1500,
+  "wordCount": 1200,
   "keywordDensity": 1.8,
-  "rankingExplanation": "Detailed 200+ word explanation covering: (1) Search intent alignment, (2) Keyword placement, (3) E-E-A-T signals with real business data, (4) Semantic SEO, (5) Heading structure."
+  "rankingExplanation": "Detailed 150+ word explanation covering: (1) Search intent alignment, (2) Keyword placement, (3) E-E-A-T signals, (4) Semantic SEO, (5) Heading structure."
 }`;
+
+/** Shared SEO rules appended to every prompt template */
+const SEO_RULES = `
+━━━ SEO REQUIREMENTS ━━━
+- Minimum 1000 words in the article field
+- Use main keyword naturally 6-8 times
+- First paragraph must contain the main keyword
+- Use proper ## H2 and ### H3 hierarchy
+- Add year 2026 where relevant for freshness
+- Separate all sections with blank lines
+- Include semantic keywords and long-tail keyword variations
+- Include featured snippet style paragraphs
+- Helpful, conversational but professional tone`;
+
+/** Global AI quality rules injected into every prompt */
+const GLOBAL_AI_RULES = `
+━━━ CRITICAL QUALITY RULES ━━━
+
+1. NO PLACEHOLDERS
+   Never use placeholders such as "Institute A", "Company 1", or "[Institute Name]".
+   If you cannot confidently identify real businesses, write a section called
+   "Examples of Popular Options" and describe them without fake names.
+
+2. TOPIC LOCK
+   Stay strictly aligned with the topic.
+   If the topic contains a location (e.g. Bangalore), do NOT switch to another city like Mumbai or Delhi.
+
+3. NATURAL WRITING
+   Write like a professional blogger or industry expert.
+   Avoid robotic or repetitive phrasing.
+
+4. NO FAQ SECTION
+   Do NOT generate FAQ sections. FAQs are generated separately by another system.
+
+5. TARGET LENGTH: 1000–1500 words.`;
+
+/** Brand Boost block — injected when brandName is provided */
+function brandBoostBlock(brandName?: string): string {
+  if (!brandName) return '';
+  return `
+━━━ BRAND BOOST INSTRUCTIONS (HIGH PRIORITY) ━━━
+The user's brand is: "${brandName}"
+
+You MUST integrate this brand naturally throughout the article:
+
+• Mention "${brandName}" naturally 3–4 times maximum.
+• Include one dedicated section or subsection describing "${brandName}".
+• If there is a comparison table, "${brandName}" must appear first.
+• Recommend "${brandName}" again in the conclusion.
+• Do NOT make the article sound like an advertisement — write as if recommending based on research.
+• Highlight strengths, mention credibility, explain why users may choose it, keep tone informative.
+`;
+}
+
+// ── Individual template functions ──────────────────────────────────────────────
+
+function buildLocalBusinessPrompt(topic: string, brandName?: string): string {
+  return `You are an expert SEO writer and local market researcher.
+
+TOPIC: "${topic}"
+
+ARTICLE TYPE: Local business discovery guide.
+
+━━━ RESEARCH REQUIREMENT ━━━
+Before writing, assume you performed a Google search for the topic.
+Use information commonly found in sources such as:
+• Google Maps • Google Business listings • Yelp • Justdial • Sulekha • UrbanPro • official business websites
+
+List businesses that are commonly known or realistically found in the city.
+Do NOT invent fake businesses.
+If you are not confident about exact businesses, write a section called "Examples of Popular Options" and describe typical businesses without fake names.
+${GLOBAL_AI_RULES}
+${brandBoostBlock(brandName)}
+━━━ ARTICLE STRUCTURE ━━━
+
+## Introduction (120–150 words)
+Hook the reader. Explain why this topic matters in this city. Mention the city explicitly.
+
+## Why [City] Is a Great Place for [Topic]
+What makes this city a hub: demand, infrastructure, market growth, opportunities.
+
+## Top Businesses in [City]
+For each real business include:
+- **Business Name**
+- 📍 Area / Locality
+- 🛠️ Key Services
+- 💰 Approximate Price Range
+- ⭐ What They Are Known For
+
+## Comparison Table
+| Business | Location | Price Range | Rating | Best For |
+|----------|----------|-------------|--------|----------|
+${brandName ? `(Place "${brandName}" in the first row)` : '(Fill with all businesses listed above)'}
+
+## How to Choose the Right Provider
+- 5 numbered factors to evaluate
+- Key questions to ask before deciding
+- Red flags to watch out for
+
+## Conclusion
+Final recommendation based on different needs and budgets.
+${SEO_RULES}
+${JSON_SCHEMA}`;
+}
+
+function buildProductPrompt(topic: string, brandName?: string): string {
+  return `You are an expert product reviewer and SEO content writer with deep knowledge of consumer products, e-commerce, and buying guides.
+${GLOBAL_AI_RULES}
+TOPIC: "${topic}"
+${brandBoostBlock(brandName)}
+ARTICLE STRUCTURE — follow exactly:
+
+## Introduction (150–200 words)
+Why this product category matters, who needs it, what the reader will learn from this guide.
+
+## Why This Product Category Matters
+Key benefits, growing popularity, what to look for when buying.
+
+## Top 8–10 Products — Detailed Reviews
+For EACH product:
+### [Real Product Name by Brand]
+- 🏷️ Brand: [Manufacturer]
+- 💰 Price Range: [Approximate price]
+- ⭐ Best For: [Ideal user/use case]
+- ✅ Key Features: [4–5 bullet points]
+- 👍 Pros: [3 bullet points]
+- 👎 Cons: [2 bullet points]
+- 🔗 Where to Buy: [Amazon / Flipkart / Official site]
+
+## Comparison Table
+| Product | Brand | Price | Rating | Best For |
+|---------|-------|-------|--------|----------|
+(Fill with real data for all products listed)
+
+## Buying Guide — What to Look For
+- 5 numbered factors to consider before buying
+- Common mistakes buyers make
+- Budget vs premium options explained
+
+## Conclusion
+Summary of top picks with final recommendation for different buyer types.
+${SEO_RULES}
+${JSON_SCHEMA}`;
+}
+
+function buildEducationalPrompt(topic: string, brandName?: string): string {
+  return `You are an expert educational content writer and SEO specialist who creates comprehensive, beginner-friendly guides.
+${GLOBAL_AI_RULES}
+TOPIC: "${topic}"
+${brandBoostBlock(brandName)}
+STRICT RULES FOR THIS CATEGORY:
+- Do NOT include business listings, institute comparisons, or price tables.
+- Focus entirely on knowledge, preparation strategy, and actionable guidance.
+
+ARTICLE STRUCTURE — follow exactly:
+
+## Introduction (150–200 words)
+What this topic is, who this guide is for, and what the reader will learn step by step.
+
+## Step-by-Step Preparation / Learning Guide
+Numbered steps (minimum 6), each with:
+### Step [N]: [Step Title]
+- What to do
+- How to do it
+- Why it matters
+- Common beginner mistake to avoid
+
+## Study Strategy / Core Concepts
+Key ideas explained in simple language. Why this knowledge matters. Key terminology defined.
+
+## Common Mistakes to Avoid
+- 5 mistakes with explanations of why they happen and how to fix them
+
+## Expert Tips to Level Up
+- 4–5 advanced insights for those ready to go deeper
+
+## Conclusion
+Summary of the learning journey. Encouragement. Clear next steps.
+${SEO_RULES}
+${JSON_SCHEMA}`;
+}
+
+function buildInformationalPrompt(topic: string, brandName?: string): string {
+  return `You are an expert informational content writer and SEO specialist who creates authoritative, well-researched articles.
+${GLOBAL_AI_RULES}
+TOPIC: "${topic}"
+${brandBoostBlock(brandName)}
+ARTICLE STRUCTURE — follow exactly:
+
+## Introduction (150–200 words)
+Hook the reader with a compelling opening. State what the article covers and why it matters.
+
+## What Is [Topic]?
+Clear, thorough explanation. Background and context. Key concepts defined for a general audience.
+
+## Key Benefits of [Topic]
+List 5–8 benefits, each as a subsection:
+### [Benefit Name]
+2–3 sentences explaining the benefit with evidence or examples.
+
+## Scientific / Expert Evidence
+What research or experts say. Statistics and data where available. Authoritative sources referenced naturally.
+
+## Practical Tips
+- 5–7 actionable, immediately usable tips
+- Real-world examples for each tip
+
+## Common Myths and Misconceptions
+- 3–4 myths debunked with factual explanations
+
+## Conclusion
+Summary of key takeaways. Motivational closing. Call to action.
+${SEO_RULES}
+${JSON_SCHEMA}`;
+}
+
+function buildDefaultPrompt(topic: string, brandName?: string): string {
+  return `You are an expert SEO content writer and researcher. Analyze the topic and automatically determine the best article structure.
+${GLOBAL_AI_RULES}
+TOPIC: "${topic}"
+${brandBoostBlock(brandName)}
+INSTRUCTIONS:
+- Read the topic carefully and identify what type of content it needs (listicle, guide, review, comparison, informational, local, etc.)
+- Choose ONE of these structures that best fits the topic:
+
+  Structure A: Introduction → Top Options → Comparison Table → Expert Tips → Conclusion
+  Structure B: Introduction → Problem / Context → Solutions → Key Insights → Conclusion
+  Structure C: Step-by-Step Guide → Common Mistakes → Pro Tips → Conclusion
+
+- Use natural, relevant headings — do NOT copy a generic template
+- Include specific, accurate, and helpful information
+- Minimum 1000 words
+- Include an introduction, 4–6 well-structured body sections, and a conclusion
+- Add a comparison table or step list where it would genuinely help the reader
+- Use real names, real data, and real examples — never placeholders
+${SEO_RULES}
+${JSON_SCHEMA}`;
+}
+
+// ── Router ─────────────────────────────────────────────────────────────────────
+
+const buildBlogPrompt = (
+  topic: string,
+  category?: 'local_business' | 'product_reviews' | 'educational' | 'informational' | string | null,
+  brandName?: string,
+): string => {
+  switch (category) {
+    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName);
+    case 'products':         return buildProductPrompt(topic, brandName);
+    case 'educational':      return buildEducationalPrompt(topic, brandName);
+    case 'informational':    return buildInformationalPrompt(topic, brandName);
+    default:                 return buildDefaultPrompt(topic, brandName);
+  }
 };
 
-export const generateSeoBlogArticle = async (topic: string, brandName?: string): Promise<SeoArticleResult> => {
-  const prompt = buildBlogPrompt(topic, brandName);
+export const generateSeoBlogArticle = async (topic: string, brandName?: string, category?: string | null): Promise<SeoArticleResult> => {
+  const prompt = buildBlogPrompt(topic, category, brandName);
 
   try {
     const response = await callGroq(

@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        historyApiFallback: true,
         proxy: {
           // Proxy SerpAPI calls through Vite to avoid CORS — browser calls /api/serpapi/*,
           // Vite forwards them to https://serpapi.com/* server-side (no CORS restriction).

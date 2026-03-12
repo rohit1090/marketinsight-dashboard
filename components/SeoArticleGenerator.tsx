@@ -199,6 +199,7 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
 const SeoArticleGenerator: React.FC = () => {
   const [topic, setTopic] = useState(() => sessionStorage.getItem('mi_blog_topic') || '');
   const [brandName, setBrandName] = useState(() => sessionStorage.getItem('mi_blog_brand') || '');
+  const [category, setCategory] = useState<string | null>(() => sessionStorage.getItem('mi_blog_category') || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeBrand, setActiveBrand] = useState(() => sessionStorage.getItem('mi_blog_active_brand') || '');
@@ -216,6 +217,10 @@ const SeoArticleGenerator: React.FC = () => {
   // Persist to sessionStorage on change
   useEffect(() => { sessionStorage.setItem('mi_blog_topic', topic); }, [topic]);
   useEffect(() => { sessionStorage.setItem('mi_blog_brand', brandName); }, [brandName]);
+  useEffect(() => {
+    if (category) sessionStorage.setItem('mi_blog_category', category);
+    else sessionStorage.removeItem('mi_blog_category');
+  }, [category]);
   useEffect(() => { sessionStorage.setItem('mi_blog_active_brand', activeBrand); }, [activeBrand]);
   useEffect(() => {
     if (result) sessionStorage.setItem('mi_blog_result', JSON.stringify(result));
@@ -240,7 +245,7 @@ const SeoArticleGenerator: React.FC = () => {
     const brand = brandName.trim();
     setActiveBrand(brand);
     try {
-      const data = await generateSeoBlogArticle(topic.trim(), brand || undefined);
+      const data = await generateSeoBlogArticle(topic.trim(), brand || undefined, category || undefined);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate article. Please try again.');
@@ -271,25 +276,28 @@ const SeoArticleGenerator: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* ── Input card ─────────────────────────────────────────────────── */}
-      <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex justify-between items-start mb-6">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Header bar */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div>
-            <h3 className="text-xl font-bold text-slate-900">AI SEO Blog Generator</h3>
-            <p className="text-sm text-slate-500 mt-1">Enter a topic and get a full SEO-optimized article with metadata, keywords, and ranking analysis.</p>
+            <h3 className="text-base font-bold text-slate-900">AI SEO Blog Generator</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Generate a full SEO-optimized article with metadata, keywords &amp; ranking analysis.</p>
           </div>
-          <div className="flex gap-2 flex-wrap justify-end">
+          <div className="flex gap-1.5">
             {['Gemini AI', 'SEO Optimized', '900+ Words'].map(tag => (
-              <span key={tag} className="text-xs px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-full font-medium">{tag}</span>
+              <span key={tag} className="text-[11px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium">{tag}</span>
             ))}
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-              Post Topic / Campaign
-            </label>
-            <div className="flex gap-3">
+        {/* Inputs row */}
+        <div className="px-6 py-4 border-b border-slate-100">
+          <div className="flex items-end gap-3">
+            {/* Topic input */}
+            <div className="flex-1 min-w-0">
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Post Topic / Campaign
+              </label>
               <input
                 type="text"
                 value={topic}
@@ -297,61 +305,97 @@ const SeoArticleGenerator: React.FC = () => {
                 onKeyDown={handleKeyDown}
                 placeholder='e.g., "Best AI marketing tools for startups"'
                 disabled={loading}
-                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-60 transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-60 transition-all"
               />
-              <button
-                onClick={handleGenerate}
-                disabled={loading || !topic.trim()}
-                className="bg-indigo-600 text-white px-7 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {loading ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    Generating...
-                  </span>
-                ) : (
-                  '✦ Generate Article'
-                )}
-              </button>
             </div>
-          </div>
 
-          {/* Brand Boost input */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Your Brand / Website <span className="normal-case font-normal">(Optional)</span>
-              </label>
-              <span className="flex items-center gap-1 text-[11px] font-bold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full">
-                ⚡ Brand Boost
-              </span>
-            </div>
-            <div className="relative">
-              <input
-                type="text"
-                value={brandName}
-                onChange={e => setBrandName(e.target.value)}
-                placeholder="e.g. My CA Academy, mywebsite.com"
-                disabled={loading}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-10 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent disabled:opacity-60 transition-all"
-              />
-              {brandName.trim() && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
-                  <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
+            {/* Divider */}
+            <div className="h-10 w-px bg-slate-200 self-end mb-0.5" />
+
+            {/* Brand Boost input */}
+            <div className="w-56 shrink-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Your Brand
+                </label>
+                <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                  ⚡ Brand Boost
                 </span>
-              )}
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={brandName}
+                  onChange={e => setBrandName(e.target.value)}
+                  placeholder="mywebsite.com"
+                  disabled={loading}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 pr-8 text-sm text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent disabled:opacity-60 transition-all"
+                />
+                {brandName.trim() && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 bg-green-100 rounded-full flex items-center justify-center">
+                    <svg className="w-2.5 h-2.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </span>
+                )}
+              </div>
             </div>
-            <p className="text-xs text-slate-400 mt-1.5">Your brand will be featured prominently in the article</p>
+
+            {/* Generate button */}
+            <button
+              onClick={handleGenerate}
+              disabled={loading || !topic.trim()}
+              className="shrink-0 bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Generating...
+                </span>
+              ) : (
+                '✦ Generate Article'
+              )}
+            </button>
           </div>
         </div>
 
+        {/* Category pills row */}
+        <div className="px-6 py-3 flex items-center gap-3 flex-wrap">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+            Content Category
+          </span>
+          {([
+            { value: 'local_business',  label: '📍 Local Business / City' },
+            { value: 'products',        label: '🛍️ Products & Reviews' },
+            { value: 'educational',     label: '🎓 Educational' },
+            { value: 'informational',   label: '💡 Informational' },
+          ] as const).map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              disabled={loading}
+              onClick={() => setCategory(category === value ? null : value)}
+              className={`text-xs font-semibold px-3 py-1 rounded-full border transition-all disabled:opacity-50 ${
+                category === value
+                  ? 'bg-purple-600 text-white border-purple-600'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-purple-400 hover:bg-purple-50 hover:text-purple-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          {category && (
+            <span className="text-[11px] text-slate-400 ml-auto">
+              Category applied · <button onClick={() => setCategory(null)} className="text-slate-500 hover:text-slate-700 underline">clear</button>
+            </span>
+          )}
+        </div>
+
         {error && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          <div className="mx-6 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
             {error}
           </div>
         )}
