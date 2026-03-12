@@ -230,54 +230,87 @@ const SEO_RULES = `
 /** AEO (Answer Engine Optimization) structure — injected into every prompt */
 const AEO_STRUCTURE = `
 ━━━ MANDATORY AEO ARTICLE STRUCTURE ━━━
-Every article MUST follow this exact structure in the "article" field:
+The "article" field MUST follow this exact order. Do not skip any section.
 
-1. H1 QUESTION TITLE
-   Restate the topic as a natural question.
-   Example: "What Are the Best CA Coaching Institutes in Bangalore in 2026?"
+────────────────────────────────────────
+STEP 1 — H1 TITLE (Question Format)
+────────────────────────────────────────
+Restate the topic as a natural question.
+Format: "What Are the [Topic] in [Year]?"
+Example: "What Are the CFA Subject Details in 2026?"
 
-2. DIRECT ANSWER (50–80 words)
-   Immediately below the title, provide a concise direct answer to the question.
-   This is used by AI answer engines and Google featured snippets.
-   Example: "The best CA coaching institutes in Bangalore include [Name], known for..."
+────────────────────────────────────────
+STEP 2 — DIRECT ANSWER (2–3 sentences)
+────────────────────────────────────────
+Immediately after the title, provide a concise factual answer.
+This paragraph is used by AI answer engines and Google featured snippets.
+Example:
+"CFA subject details include Ethics, Quantitative Methods, Economics, Financial
+Reporting, Corporate Finance, Equity Investments, Fixed Income, Derivatives,
+Alternative Investments, and Portfolio Management across three exam levels."
 
-3. TABLE OF CONTENTS
-   List 4–6 section titles as a bullet list so readers can navigate.
-   Example:
-   • What Makes a Great CA Coaching Institute?
-   • Top CA Coaching Institutes in Bangalore
-   • How to Choose the Right Institute
-   • TLDR Summary
+────────────────────────────────────────
+STEP 3 — TABLE OF CONTENTS
+────────────────────────────────────────
+List 4–6 upcoming section titles as bullet points.
+Label it: **Table of Contents**
+Example:
+• What Is the CFA Program?
+• CFA Exam Structure and Levels
+• CFA Subjects by Level
+• How to Prepare for CFA Exams
+• TLDR Summary
 
-4. SECTION HEADINGS — Must be question-based
-   Each H2 section must start with a question.
-   Example:
-   ## What Makes a Great CA Coaching Institute?
-   ## Which Are the Top CA Coaching Institutes in Bangalore?
-   ## How Do You Choose the Right CA Coaching?
+────────────────────────────────────────
+STEP 4 — BODY SECTIONS (Question-Based H2s)
+────────────────────────────────────────
+Each H2 heading MUST be a question.
+Each section follows this pattern:
 
-5. SECTION CONTENT PATTERN — for every section:
-   a) Short direct answer (1–2 sentences)
-   b) Detailed explanation
-   c) Bullet points or numbered list where helpful
-   d) Optional image placeholder: [Illustration: relevant description]
+## [Question Heading]?
 
-6. TLDR SUMMARY — before the conclusion
-   Provide a bullet-point summary of key takeaways.
-   Example:
-   **TLDR**
-   • Best overall: [Name]
-   • Best budget option: [Name]
-   • Best for working professionals: [Name]
+**Short Answer:** [1–2 sentence direct answer to the question]
 
-7. AUTHOR / EXPERT SECTION — at the very end
-   Add a credibility line.
-   Example:
-   ---
-   *Author: Research & Editorial Team | Expertise: [relevant domain]*
+[Detailed explanation paragraph — 3–5 sentences]
 
-Do NOT use generic non-question headings like "Introduction" or "Conclusion" as H2s.
-Instead write: "What Is [Topic] and Why Does It Matter?" and "Which Option Is Right for You?"`;
+[Bullet points or numbered list where helpful]
+
+[Illustration: relevant visual description] ← add where it adds value
+
+Example:
+## What Is the CFA Program?
+
+**Short Answer:** The CFA program is a globally recognized certification for investment professionals offered by the CFA Institute.
+
+The CFA program consists of three exam levels covering investment analysis, portfolio management, and financial ethics. It is widely regarded as the gold standard in the investment management industry...
+
+Do NOT use non-question headings like "Introduction", "Overview", or "Conclusion" as H2s.
+Use question equivalents: "What Is [Topic] and Why Does It Matter?" and "Which Option Is Right for You?"
+
+────────────────────────────────────────
+STEP 5 — TLDR SUMMARY (before final section)
+────────────────────────────────────────
+Add a bullet-point summary of the key takeaways.
+Label it: **TLDR**
+Example:
+**TLDR**
+• CFA has 3 exam levels
+• Covers 10 core subject areas
+• Requires 300+ hours of study per level
+• Structured coaching programs significantly improve pass rates
+
+────────────────────────────────────────
+STEP 6 — FINAL SECTION (Which Option Is Right for You?)
+────────────────────────────────────────
+Summarize the best options based on different reader needs. Include brand recommendation if applicable.
+
+────────────────────────────────────────
+STEP 7 — AUTHOR / EXPERT SECTION (end of article)
+────────────────────────────────────────
+Close every article with this credibility block:
+
+---
+*Author: Research & Editorial Team | Expertise: [relevant domain based on topic]*`;
 
 /** Global AI quality rules injected into every prompt */
 const GLOBAL_AI_RULES = `
