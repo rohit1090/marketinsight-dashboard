@@ -513,25 +513,84 @@ async function fetchCompetitorBlock(topic: string): Promise<string> {
   }
 }
 
+// ── Deep research prompt (no-category path — Groq only, no SerpAPI) ───────────
+
+function buildDeepResearchPrompt(topic: string, brandName?: string): string {
+  return `You are an expert researcher and professional SEO writer with deep knowledge across all industries and topics.
+
+TOPIC: "${topic}"
+${brandBoostBlock(brandName)}
+${GLOBAL_AI_RULES}
+
+━━━ DEEP RESEARCH INSTRUCTIONS ━━━
+No external search data is available. Use your full training knowledge to:
+
+• Analyze the topic thoroughly from multiple angles
+• Synthesize accurate, factual information from your knowledge base
+• Identify the most valuable aspects readers need to understand
+• Include specific details, examples, and real-world context
+• Avoid generic filler — every paragraph must add distinct value
+• Think like a subject matter expert, not a generic content generator
+
+━━━ STRUCTURE SELECTION ━━━
+Read the topic intent carefully and choose the most fitting structure:
+
+  Structure A (Discovery): Introduction → What It Is → Why It Matters → Key Options/Examples → Expert Tips → Conclusion
+  Structure B (How-To): Introduction → Prerequisites → Step-by-Step Process → Common Mistakes → Pro Tips → Conclusion
+  Structure C (Analysis): Introduction → Background → Core Concepts → Comparison/Breakdown → Practical Application → Conclusion
+
+Choose ONE structure. Use natural, topic-specific headings — do NOT use generic template headings.
+
+━━━ CONTENT REQUIREMENTS ━━━
+- Target: 1200–1500 words
+- Use ## H2 and ### H3 headings with clear hierarchy
+- Include specific facts, numbers, and examples where relevant
+- First paragraph must contain the main keyword
+- Use semantic keyword variations naturally throughout
+- Include a comparison table or numbered list where it helps the reader
+- Add 2026 context where relevant for freshness
+- Conclusion must provide clear, actionable next steps
+
+Do NOT generate FAQs.
+${JSON_SCHEMA}`;
+}
+
+// ── Article generation entry point ────────────────────────────────────────────
+
 export const generateSeoBlogArticle = async (
   topic: string,
   brandName?: string,
   category?: string | null,
 ): Promise<SeoArticleResult> => {
-  // Step 1: Run category research + competitor SERP analysis in parallel
+
+  // ── PATH A: No category selected → Groq deep research only (no SerpAPI) ──
+  if (!category) {
+    const prompt = buildDeepResearchPrompt(topic, brandName);
+    try {
+      const response = await callGroq(
+        [{ role: 'user', content: prompt }],
+        { response_format: { type: 'json_object' }, max_tokens: 4096 },
+      );
+      const text = response.choices[0]?.message?.content || '';
+      return JSON.parse(text) as SeoArticleResult;
+    } catch (error) {
+      console.error('Deep research generation failed:', error);
+      throw error;
+    }
+  }
+
+  // ── PATH B: Category selected → SerpAPI research + competitor analysis ────
   const [researchBlock, competitorBlock] = await Promise.all([
     fetchResearchBlock(topic, category, brandName),
     fetchCompetitorBlock(topic),
   ]);
 
-  // Step 2: Build prompt with both research + competitor data injected
   const prompt = buildBlogPrompt(topic, category, brandName, researchBlock, competitorBlock);
 
-  // Step 3: Generate article via Groq
   try {
     const response = await callGroq(
       [{ role: 'user', content: prompt }],
-      { response_format: { type: 'json_object' }, max_tokens: 4000 },
+      { response_format: { type: 'json_object' }, max_tokens: 4096 },
     );
     const text = response.choices[0]?.message?.content || '';
     return JSON.parse(text) as SeoArticleResult;
