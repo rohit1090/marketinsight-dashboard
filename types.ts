@@ -82,6 +82,7 @@ export interface AgentIntervention {
 export enum ViewMode {
   OVERVIEW = 'overview',
   SEO_SUITE = 'seo_suite',
+  CONTENT_WRITER = 'content_writer',
   SOCIAL_HUB = 'social_hub',
   WORKFLOWS = 'workflows',
   COMPETITORS = 'competitors',

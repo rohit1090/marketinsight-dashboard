@@ -26,6 +26,25 @@ export interface SearchResearch {
   results: SearchResult[];
 }
 
+// ── Combined local business competitor data (Google Maps + Google Search) ──────
+
+export interface CompetitorEntry {
+  name: string;
+  location: string;
+  rating: number | null;
+  reviews: number | null;
+  services: string;
+  phone: string;
+  website: string;
+  description: string;
+  source: string;
+  featured: boolean;
+}
+
+export interface CombinedLocalResearch {
+  competitors: CompetitorEntry[];
+}
+
 async function postResearch<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -39,6 +58,11 @@ async function postResearch<T>(endpoint: string, body: Record<string, unknown>):
 
 export async function fetchLocalBusinesses(topic: string, brandName?: string): Promise<LocalBusinessResearch> {
   return postResearch<LocalBusinessResearch>('/api/research/local-business', { topic, brandName });
+}
+
+/** Runs BOTH google_local (Maps) + google (Search) — used for Local Business / City category */
+export async function fetchLocalBusinessesCombined(topic: string, brandName?: string): Promise<CombinedLocalResearch> {
+  return postResearch<CombinedLocalResearch>('/api/research/local-business-combined', { topic, brandName });
 }
 
 export async function fetchProductResults(topic: string): Promise<SearchResearch> {
@@ -76,4 +100,41 @@ export function formatSearchResearch(data: SearchResearch, label: string): strin
     `${i + 1}. ${r.title}\n   ${r.snippet}${r.link ? `\n   Source: ${r.link}` : ''}`
   );
   return `━━━ GOOGLE SEARCH RESEARCH — ${label} ━━━\n${lines.join('\n\n')}`;
+}
+
+/**
+ * Formats combined Google Maps + Google Search competitor data into a
+ * structured block for Groq prompt injection.
+ * Brand is always at position 1 (injected by the API).
+ */
+export function formatCombinedLocalResearch(data: CombinedLocalResearch): string {
+  if (!data.competitors?.length) return '';
+
+  const lines = data.competitors.map((c, i) => {
+    const tag = c.featured ? ' ⭐ [YOUR BRAND — ALWAYS LIST FIRST]' : '';
+    const rating = c.rating != null ? `${c.rating} ⭐` : 'N/A';
+    const reviews = c.reviews != null ? ` (${c.reviews} reviews)` : '';
+    return [
+      `${i + 1}. ${c.name}${tag}`,
+      `   📍 Location: ${c.location || 'N/A'}`,
+      `   ⭐ Rating: ${rating}${reviews}`,
+      `   🛠️ Services/Type: ${c.services || 'N/A'}`,
+      `   📞 Phone: ${c.phone || 'N/A'}`,
+      `   🌐 Website: ${c.website || 'N/A'}`,
+      `   📝 Description: ${c.description || 'N/A'}`,
+    ].join('\n');
+  });
+
+  return `━━━ COMPETITOR RESEARCH DATA (Google Maps + Google Search combined) ━━━
+Total competitors found: ${data.competitors.length}
+
+${lines.join('\n\n')}
+
+━━━ ARTICLE GENERATION RULES FOR THIS DATA ━━━
+• The ⭐ [YOUR BRAND] entry MUST appear first in ALL lists, tables, and sections.
+• Generate one <h3> block per competitor — use the actual name from the data above.
+• Build a valid HTML comparison <table> containing ALL ${data.competitors.length} competitors (minimum 5 rows).
+• Use real ratings, locations, and descriptions from the data above.
+• Do NOT invent competitor names or fabricate data not listed here.
+• If description is N/A, use your knowledge of that type of business to fill in services.`;
 }

@@ -11,6 +11,7 @@ import SeoSuitePanel from './components/SeoSuitePanel';
 import SocialHubPanel from './components/SocialHubPanel';
 import WorkflowPanel from './components/WorkflowPanel';
 import AgentHubPanel from './components/AgentHubPanel';
+import ContentWriterPanel from './components/ContentWriterPanel';
 import LandingPage from './components/LandingPage';
 import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
@@ -180,6 +181,8 @@ const App: React.FC = () => {
         );
       case ViewMode.SEO_SUITE:
         return <SeoSuitePanel dateRange={dateRange} />;
+      case ViewMode.CONTENT_WRITER:
+        return <ContentWriterPanel />;
       case ViewMode.SOCIAL_HUB:
         return <SocialHubPanel />;
       case ViewMode.WORKFLOWS:
@@ -211,7 +214,7 @@ const App: React.FC = () => {
         onLogout={handleLogout}
       />
       
-      <main className="flex-1 overflow-y-auto px-8 py-8 lg:px-12 lg:py-10">
+      <main className="flex-1 overflow-y-auto px-8 pt-8 pb-5 lg:px-12 lg:pt-10 lg:pb-5">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight capitalize">

@@ -5,7 +5,6 @@ import { fetchKeywordRanking, refreshAllRankings } from '../services/seoRankingS
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { DateRange } from '../types';
 import { Search, MapPin, X, ChevronDown } from 'lucide-react';
-import SeoArticleGenerator from './SeoArticleGenerator';
 import AiVisibilityTab from './AiVisibilityTab';
 
 // ─── Searchable Location Combobox ────────────────────────────────────────────
@@ -378,11 +377,11 @@ interface SeoSuitePanelProps {
 }
 
 const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'rankings' | 'audit' | 'ai-visibility' | 'seo-blog'>(() => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'rankings' | 'audit' | 'ai-visibility'>(() => {
     const saved = localStorage.getItem('mi_seo_tab');
-    return (['overview', 'rankings', 'audit', 'ai-visibility', 'seo-blog'].includes(saved ?? '')
+    return (['overview', 'rankings', 'audit', 'ai-visibility'].includes(saved ?? '')
       ? saved
-      : 'overview') as 'overview' | 'rankings' | 'audit' | 'ai-visibility' | 'seo-blog';
+      : 'overview') as 'overview' | 'rankings' | 'audit' | 'ai-visibility';
   });
 
   // Domain Audit State
@@ -573,12 +572,6 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
           className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'ai-visibility' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           AI Visibility
-        </button>
-        <button
-          onClick={() => setActiveTab('seo-blog')}
-          className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'seo-blog' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-        >
-          ✦ SEO Blog
         </button>
       </div>
 
@@ -1041,7 +1034,6 @@ const SeoSuitePanel: React.FC<SeoSuitePanelProps> = ({ dateRange }) => {
         </div>
       )}
       {activeTab === 'ai-visibility' && <AiVisibilityTab />}
-      {activeTab === 'seo-blog' && <SeoArticleGenerator />}
     </div>
   );
 };

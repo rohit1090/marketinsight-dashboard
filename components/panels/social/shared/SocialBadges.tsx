@@ -27,6 +27,7 @@ export function GradeBadge({ grade, color }: GradeBadgeProps) {
 interface RankBadgeProps {
   value: string;
   label: string;
+  key?: React.Key;
 }
 
 export function RankBadge({ value, label }: RankBadgeProps) {

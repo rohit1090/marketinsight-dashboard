@@ -33,6 +33,12 @@ const Icon = {
         d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
     </svg>
   ),
+  writer: (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  ),
   social: (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -92,9 +98,10 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'SEO Analytics',
     items: [
-      { id: ViewMode.SEO_SUITE,    label: 'SEO Suite',    icon: Icon.seo },
-      { id: ViewMode.SOCIAL_HUB,   label: 'Social Hub',   icon: Icon.social },
-      { id: ViewMode.MARKET_INTEL, label: 'Market Intel', icon: Icon.market },
+      { id: ViewMode.SEO_SUITE,       label: 'SEO Suite',       icon: Icon.seo },
+      { id: ViewMode.CONTENT_WRITER,  label: 'Content Writer',  icon: Icon.writer },
+      { id: ViewMode.SOCIAL_HUB,      label: 'Social Hub',      icon: Icon.social },
+      { id: ViewMode.MARKET_INTEL,    label: 'Market Intel',    icon: Icon.market },
     ],
   },
   {
