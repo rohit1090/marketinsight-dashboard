@@ -377,12 +377,17 @@ You MUST integrate this brand naturally throughout the article:
 
 // ── Individual template functions ──────────────────────────────────────────────
 
-function buildLocalBusinessPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
+const langInstruction = (language?: string) =>
+  language && language !== 'English'
+    ? `\n⚠️ LANGUAGE REQUIREMENT: Write the ENTIRE article text in ${language}. All headings, paragraphs, and list items must be in ${language}. Keep HTML tags in English only.\n`
+    : '';
+
+function buildLocalBusinessPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
   return `You are an expert SEO writer and local market researcher.
 
 TOPIC: "${topic}"
 ARTICLE TYPE: Local business discovery guide.
-
+${langInstruction(language)}
 ${GLOBAL_AI_RULES}
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE RESEARCH DATA — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Base the article on the businesses listed above. Do NOT invent fake businesses. If a business has "featured: true", list it first.\n` : `━━━ RESEARCH NOTE ━━━\nNo live research data was fetched. Use your training knowledge of commonly known businesses in the city. If unsure of real names, write a section called "Examples of Popular Options".\n`}
@@ -513,8 +518,9 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildProductPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
+function buildProductPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
   return `You are an expert product reviewer and SEO content writer with deep knowledge of consumer products, e-commerce, and buying guides.
+${langInstruction(language)}
 
 TOPIC: "${topic}"
 ARTICLE TYPE: Product review and buying guide.
@@ -660,8 +666,9 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildEducationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
+function buildEducationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
   return `You are an expert educational content writer and SEO specialist who creates comprehensive, beginner-friendly guides.
+${langInstruction(language)}
 
 TOPIC: "${topic}"
 ARTICLE TYPE: Educational guide — exam prep, certification, academic syllabus, or learning content.
@@ -828,8 +835,9 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildInformationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
+function buildInformationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
   return `You are an expert informational content writer and SEO specialist who creates authoritative, well-researched articles.
+${langInstruction(language)}
 
 TOPIC: "${topic}"
 ARTICLE TYPE: Informational / educational article covering concepts, benefits, tips, and evidence.
@@ -960,8 +968,9 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildDefaultPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string): string {
+function buildDefaultPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
   return `You are an expert SEO content writer and researcher. Analyze the topic and automatically determine the best article structure.
+${langInstruction(language)}
 
 TOPIC: "${topic}"
 ARTICLE TYPE: Auto-detect and write the best-fit article (listicle, guide, review, comparison, how-to, etc.)
@@ -1061,13 +1070,14 @@ const buildBlogPrompt = (
   brandName?: string,
   researchBlock?: string,
   competitorBlock?: string,
+  language?: string,
 ): string => {
   switch (category) {
-    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName, researchBlock, competitorBlock);
-    case 'products':         return buildProductPrompt(topic, brandName, researchBlock, competitorBlock);
-    case 'educational':      return buildEducationalPrompt(topic, brandName, researchBlock, competitorBlock);
-    case 'informational':    return buildInformationalPrompt(topic, brandName, researchBlock, competitorBlock);
-    default:                 return buildDefaultPrompt(topic, brandName, researchBlock, competitorBlock);
+    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName, researchBlock, competitorBlock, language);
+    case 'products':         return buildProductPrompt(topic, brandName, researchBlock, competitorBlock, language);
+    case 'educational':      return buildEducationalPrompt(topic, brandName, researchBlock, competitorBlock, language);
+    case 'informational':    return buildInformationalPrompt(topic, brandName, researchBlock, competitorBlock, language);
+    default:                 return buildDefaultPrompt(topic, brandName, researchBlock, competitorBlock, language);
   }
 };
 
@@ -1115,11 +1125,11 @@ async function fetchCompetitorBlock(topic: string): Promise<string> {
 
 // ── Deep research prompt (no-category path — Groq only, no SerpAPI) ───────────
 
-function buildDeepResearchPrompt(topic: string, brandName?: string): string {
+function buildDeepResearchPrompt(topic: string, brandName?: string, language?: string): string {
   return `You are a subject matter expert and professional SEO content writer with verified knowledge across all industries, certifications, and academic topics.
 
 TOPIC: "${topic}"
-${brandBoostBlock(brandName)}
+${langInstruction(language)}${brandBoostBlock(brandName)}
 ${GLOBAL_AI_RULES}
 
 ━━━ DEEP RESEARCH INSTRUCTIONS ━━━
@@ -1380,11 +1390,12 @@ export const generateSeoBlogArticle = async (
   topic: string,
   brandName?: string,
   category?: string | null,
+  language?: string,
 ): Promise<SeoArticleResult> => {
 
   // ── PATH A: No category selected → Groq deep research only (no SerpAPI) ──
   if (!category) {
-    const prompt = buildDeepResearchPrompt(topic, brandName);
+    const prompt = buildDeepResearchPrompt(topic, brandName, language);
     try {
       const response = await callGroq(
         [{ role: 'user', content: prompt }],
@@ -1406,7 +1417,7 @@ export const generateSeoBlogArticle = async (
     fetchCompetitorBlock(topic),
   ]);
 
-  const prompt = buildBlogPrompt(topic, category, brandName, researchBlock, competitorBlock);
+  const prompt = buildBlogPrompt(topic, category, brandName, researchBlock, competitorBlock, language);
 
   try {
     const response = await callGroq(

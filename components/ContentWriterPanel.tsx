@@ -22,6 +22,7 @@ interface Article {
   topic: string;
   category: string | null;
   brandName: string;
+  language: string;
   createdAt: number;
   wordCount: number;
   seoScore: number;
@@ -281,6 +282,7 @@ const ContentWriterPanel: React.FC = () => {
   const [topic, setTopic] = useState('');
   const [brandName, setBrandName] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState('English');
 
   // Article list
   const [articles, setArticles] = useState<Article[]>(() => {
@@ -757,7 +759,7 @@ const ContentWriterPanel: React.FC = () => {
     }, 700);
 
     try {
-      const result = await generateSeoBlogArticle(t, bn || undefined, cat || undefined);
+      const result = await generateSeoBlogArticle(t, bn || undefined, cat || undefined, article.language);
       const wc = countArticleWords(result.article);
       const computedScore = computeSeoScore(
         result.article, wc,
@@ -794,6 +796,7 @@ const ContentWriterPanel: React.FC = () => {
       topic: topic.trim(),
       category,
       brandName: brandName.trim(),
+      language: selectedLanguage,
       createdAt: Date.now(),
       wordCount: 0,
       seoScore: 0,
@@ -816,6 +819,7 @@ const ContentWriterPanel: React.FC = () => {
         topic.trim(),
         brandName.trim() || undefined,
         category || undefined,
+        selectedLanguage !== 'English' ? selectedLanguage : undefined,
       );
 
       // Always recount from actual article text so list and editor stay in sync
@@ -1563,6 +1567,44 @@ const ContentWriterPanel: React.FC = () => {
                 placeholder='e.g., "Best AI marketing tools for startups"'
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
               />
+            </div>
+
+            <div className="h-10 w-px bg-slate-200 self-end mb-0.5" />
+
+            {/* Language */}
+            <div className="shrink-0" style={{ width: 108 }}>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Language
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedLanguage}
+                  onChange={e => setSelectedLanguage(e.target.value)}
+                  className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all cursor-pointer pr-7"
+                >
+                  {[
+                    ['English',   'EN'],
+                    ['Hindi',     'HI'],
+                    ['Bengali',   'BN'],
+                    ['Telugu',    'TE'],
+                    ['Marathi',   'MR'],
+                    ['Tamil',     'TA'],
+                    ['Gujarati',  'GU'],
+                    ['Kannada',   'KN'],
+                    ['Malayalam', 'ML'],
+                    ['Punjabi',   'PA'],
+                    ['Odia',      'OR'],
+                    ['Assamese',  'AS'],
+                    ['Urdu',      'UR'],
+                    ['Sanskrit',  'SA'],
+                  ].map(([lang, code]) => (
+                    <option key={code} value={lang}>{code} — {lang}</option>
+                  ))}
+                </select>
+                <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
 
             <div className="h-10 w-px bg-slate-200 self-end mb-0.5" />
