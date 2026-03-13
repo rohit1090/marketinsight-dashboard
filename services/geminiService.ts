@@ -1331,6 +1331,49 @@ export const runEditorAction = async (
   return cleanArticleHtml(raw.trim());
 };
 
+// ── Quick text-selection actions ──────────────────────────────────────────────
+
+export type QuickActionType = 'rewrite' | 'expand' | 'shorten' | 'simplify';
+
+const QUICK_ACTION_PROMPTS: Record<QuickActionType, string> = {
+  rewrite:  'Rewrite the following text to improve clarity, engagement, and flow. Keep the exact same meaning.',
+  expand:   'Expand the following text with more detail, examples, and supporting information. Keep it focused and relevant.',
+  shorten:  'Shorten the following text while keeping all key information. Remove fluff and redundancy.',
+  simplify: 'Simplify the following text so it is easy to understand. Use plain, direct language. Avoid jargon.',
+};
+
+/**
+ * Rewrites, expands, shortens, or simplifies a selected piece of text.
+ * Returns HTML to replace the original selection.
+ */
+export const runQuickAction = async (
+  action: QuickActionType,
+  selectedText: string,
+  articleTitle: string,
+): Promise<string> => {
+  const prompt = `You are an expert content editor working on an article titled "${articleTitle}".
+
+Instruction: ${QUICK_ACTION_PROMPTS[action]}
+
+Text to modify:
+${selectedText}
+
+Rules:
+- Return ONLY the modified content as valid HTML
+- No explanations, no commentary, no wrapping <div>
+- If the input is a paragraph, return <p>...</p>
+- If the input contains multiple paragraphs or list items, preserve that structure
+- Do NOT add <html>, <body>, or document-level tags
+- No emojis`;
+
+  const response = await callGroq(
+    [{ role: 'user', content: prompt }],
+    { max_tokens: 1024 },
+  );
+  const raw = response.choices[0]?.message?.content || '';
+  return cleanArticleHtml(raw.trim());
+};
+
 // ── Article generation entry point ────────────────────────────────────────────
 
 export const generateSeoBlogArticle = async (

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { generateSeoBlogArticle, runEditorAction, EditorActionType, SeoArticleResult } from '../services/geminiService';
+import { generateSeoBlogArticle, runEditorAction, runQuickAction, EditorActionType, QuickActionType, SeoArticleResult } from '../services/geminiService';
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -310,6 +310,17 @@ const ContentWriterPanel: React.FC = () => {
   const [linkPreview, setLinkPreview] = useState<{ href: string; x: number; y: number } | null>(null);
   const savedSelectionRef = useRef<Range | null>(null);
 
+  // ── Context AI menu ───────────────────────────────────────────────────────
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showRitzMenu, setShowRitzMenu] = useState(false);
+  const [selectionBar, setSelectionBar] = useState<{ x: number; y: number; text: string } | null>(null);
+  const selectionRangeRef = useRef<Range | null>(null);
+  const [quickActionLoading, setQuickActionLoading] = useState<QuickActionType | null>(null);
+  const [contextActionLoading, setContextActionLoading] = useState<EditorActionType | null>(null);
+  const [showContextEditModal, setShowContextEditModal] = useState(false);
+  const [contextEditInstruction, setContextEditInstruction] = useState('');
+  const [toast, setToast] = useState<{ msg: string; type: 'error' | 'info' | 'success' } | null>(null);
+
   // ── Undo / Redo history ──────────────────────────────────────────────────
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
@@ -399,6 +410,11 @@ const ContentWriterPanel: React.FC = () => {
     redoStack.current = [];
     setCanUndo(true);
     setCanRedo(false);
+  }, []);
+
+  const showToast = useCallback((msg: string, type: 'error' | 'info' | 'success' = 'info') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
   }, []);
 
   const handleInsertLink = useCallback(() => {
@@ -586,6 +602,144 @@ const ContentWriterPanel: React.FC = () => {
       setActiveAction(null);
     }
   }, [selectedArticle, editInstruction, handleEditorInput]);
+
+  // ── Context AI Menu handlers ───────────────────────────────────────────────
+
+  /** Right-click inside editor → show context menu */
+  const handleEditorContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const sel = window.getSelection();
+    savedSelectionRef.current = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null;
+    setContextMenu({ x: e.clientX, y: e.clientY });
+    setShowRitzMenu(false);
+    setSelectionBar(null);
+  }, []);
+
+  /** Mouse-up inside editor → show selection bar if text is highlighted */
+  const handleEditorMouseUp = useCallback(() => {
+    // Small delay so selection is committed
+    setTimeout(() => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        setSelectionBar(null);
+        return;
+      }
+      const text = sel.toString().trim();
+      if (text.length < 3) { setSelectionBar(null); return; }
+      selectionRangeRef.current = sel.getRangeAt(0).cloneRange();
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      setSelectionBar({
+        x: rect.left + rect.width / 2,
+        y: rect.top - 8,
+        text,
+      });
+      setContextMenu(null);
+    }, 10);
+  }, []);
+
+  /** Close context menu + selection bar on click-outside */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-ctx-menu]') && !target.closest('[data-ritz-menu]')) {
+        setContextMenu(null);
+        setShowRitzMenu(false);
+      }
+      if (!target.closest('[data-sel-bar]')) {
+        // only clear selection bar on mousedown outside of it
+        if (e.type === 'mousedown' && !target.closest('[data-sel-bar]')) {
+          setSelectionBar(null);
+        }
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  /** Context menu: run FAQ/List/Table at current cursor */
+  const handleContextMenuAction = useCallback(async (actionType: EditorActionType) => {
+    setShowRitzMenu(false);
+    setContextMenu(null);
+    if (actionType === 'edit') {
+      setShowContextEditModal(true);
+      return;
+    }
+    const editor = editorRef.current;
+    if (!editor) return;
+    const title = selectedArticle?.result?.title || selectedArticle?.topic || '';
+    const content = editor.innerHTML;
+    setContextActionLoading(actionType);
+    try {
+      const html = await runEditorAction(actionType, title, content);
+      // Restore cursor to where user right-clicked, then insert
+      if (savedSelectionRef.current) {
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(savedSelectionRef.current);
+      }
+      insertContentAtCursor(html);
+    } catch {
+      showToast('AI generation failed. Please try again.', 'error');
+    } finally {
+      setContextActionLoading(null);
+    }
+  }, [selectedArticle, insertContentAtCursor, showToast]);
+
+  /** Context Edit modal: apply instruction to full article */
+  const handleContextEditSubmit = useCallback(async () => {
+    if (!contextEditInstruction.trim()) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    setShowContextEditModal(false);
+    const title = selectedArticle?.result?.title || selectedArticle?.topic || '';
+    const content = editor.innerHTML;
+    setContextActionLoading('edit');
+    saveSnapshot();
+    try {
+      const html = await runEditorAction('edit', title, content, contextEditInstruction.trim());
+      editor.innerHTML = html;
+      handleEditorInput();
+      setContextEditInstruction('');
+    } catch {
+      showToast('AI edit failed. Please try again.', 'error');
+    } finally {
+      setContextActionLoading(null);
+    }
+  }, [contextEditInstruction, selectedArticle, saveSnapshot, handleEditorInput, showToast]);
+
+  /** Selection bar: rewrite/expand/shorten/simplify selected text only */
+  const handleQuickAction = useCallback(async (action: QuickActionType) => {
+    const range = selectionRangeRef.current;
+    const text = range?.toString().trim() || '';
+    if (!text) return;
+    const title = selectedArticle?.result?.title || selectedArticle?.topic || '';
+    setQuickActionLoading(action);
+    try {
+      const html = await runQuickAction(action, text, title);
+      saveSnapshot();
+      const editor = editorRef.current;
+      if (!editor || !range) return;
+      // Restore selection and replace with AI result
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      range.deleteContents();
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      const frag = document.createDocumentFragment();
+      while (temp.firstChild) frag.appendChild(temp.firstChild);
+      range.insertNode(frag);
+      range.collapse(false);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      handleEditorInput();
+      setSelectionBar(null);
+    } catch {
+      showToast('AI generation failed. Please try again.', 'error');
+    } finally {
+      setQuickActionLoading(null);
+    }
+  }, [selectedArticle, saveSnapshot, handleEditorInput, showToast]);
 
   // ── Retry failed article ───────────────────────────────────────────────────
 
@@ -1005,6 +1159,8 @@ const ContentWriterPanel: React.FC = () => {
                 suppressContentEditableWarning
                 onInput={handleEditorInput}
                 onKeyDown={handleEditorKeyDown}
+                onContextMenu={handleEditorContextMenu}
+                onMouseUp={handleEditorMouseUp}
                 onMouseOver={e => {
                   const a = (e.target as HTMLElement).closest('a');
                   if (a) {
@@ -1058,6 +1214,48 @@ const ContentWriterPanel: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* ── Selection Bar (highlight toolbar) ─────────────────────────── */}
+            {selectionBar && !contextMenu && (
+              <div
+                data-sel-bar
+                className="fixed z-[200] flex items-center gap-0.5 bg-gray-900 rounded-xl shadow-2xl px-1.5 py-1.5 border border-white/10"
+                style={{
+                  left: selectionBar.x,
+                  top: selectionBar.y,
+                  transform: 'translate(-50%, -100%)',
+                }}
+              >
+                {([
+                  { action: 'rewrite'  as QuickActionType, label: 'Rewrite',  icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
+                  { action: 'expand'   as QuickActionType, label: 'Expand',   icon: 'M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4' },
+                  { action: 'shorten'  as QuickActionType, label: 'Shorten',  icon: 'M5 12h14M12 5l7 7-7 7' },
+                  { action: 'simplify' as QuickActionType, label: 'Simplify', icon: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z' },
+                ] as const).map(({ action, label, icon }) => (
+                  <button
+                    key={action}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => handleQuickAction(action)}
+                    disabled={quickActionLoading !== null}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-white hover:bg-white/10 transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {quickActionLoading === action ? (
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        {icon.split('M').filter(Boolean).map((d, i) => <path key={i} d={`M${d}`} />)}
+                      </svg>
+                    )}
+                    {label}
+                  </button>
+                ))}
+                {/* Caret arrow pointing down */}
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+              </div>
+            )}
 
             {/* Bottom bar */}
             <div className="flex items-center gap-6 px-8 py-3 border-t border-slate-100 bg-slate-50 text-xs font-medium text-slate-500">
@@ -1169,6 +1367,156 @@ const ContentWriterPanel: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* ── Context Menu (right-click) ──────────────────────────────────── */}
+        {contextMenu && (
+          <div
+            data-ctx-menu
+            className="fixed z-[300] bg-white rounded-2xl shadow-2xl border border-slate-100 py-1.5 min-w-[200px] overflow-hidden"
+            style={{ left: contextMenu.x, top: contextMenu.y - 8, transform: 'translateY(-100%)' }}
+          >
+            {/* Add Comment */}
+            <button
+              onClick={() => { setContextMenu(null); showToast('Comments coming soon.', 'info'); }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+            >
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+              </svg>
+              Add Comment
+            </button>
+
+            {/* Create AI Image */}
+            <button
+              onClick={() => { setContextMenu(null); showToast('AI image generation coming soon.', 'info'); }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
+            >
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              Create AI Image
+            </button>
+
+            <div className="my-1 border-t border-slate-100" />
+
+            {/* Edit with Ritz AI */}
+            <div data-ritz-menu className="relative">
+              <button
+                onClick={() => setShowRitzMenu(v => !v)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 transition-colors text-left"
+              >
+                <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                Edit with Ritz AI
+                <svg className={`w-3.5 h-3.5 ml-auto transition-transform ${showRitzMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Ritz AI submenu */}
+              {showRitzMenu && (
+                <div className="bg-slate-50 border-t border-slate-100">
+                  {([
+                    { type: 'edit'  as EditorActionType, label: 'Edit with AI',    icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z', color: 'text-violet-600' },
+                    { type: 'faq'   as EditorActionType, label: 'Generate FAQ',    icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', color: 'text-blue-600' },
+                    { type: 'list'  as EditorActionType, label: 'Generate List',   icon: 'M4 6h16M4 10h16M4 14h16M4 18h7', color: 'text-emerald-600' },
+                    { type: 'table' as EditorActionType, label: 'Generate Table',  icon: 'M3 10h18M3 14h18M10 3v18M14 3v18M3 6a1 1 0 011-1h16a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6z', color: 'text-amber-600' },
+                  ]).map(({ type, label, icon, color }) => (
+                    <button
+                      key={type}
+                      onClick={() => handleContextMenuAction(type)}
+                      disabled={contextActionLoading !== null}
+                      className="w-full flex items-center gap-3 pl-8 pr-4 py-2.5 text-sm text-slate-700 hover:bg-white transition-colors text-left disabled:opacity-50"
+                    >
+                      {contextActionLoading === type ? (
+                        <svg className="w-4 h-4 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                      ) : (
+                        <svg className={`w-4 h-4 ${color}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                          {icon.split('M').filter(Boolean).map((d, i) => <path key={i} d={`M${d}`} />)}
+                        </svg>
+                      )}
+                      {contextActionLoading === type ? `${label}…` : label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Context Edit Modal ──────────────────────────────────────────────── */}
+        {showContextEditModal && (
+          <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Edit with AI</h3>
+                  <p className="text-xs text-slate-400">Describe what you want to change</p>
+                </div>
+                <button onClick={() => setShowContextEditModal(false)} className="ml-auto text-slate-400 hover:text-slate-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <textarea
+                autoFocus
+                rows={3}
+                value={contextEditInstruction}
+                onChange={e => setContextEditInstruction(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleContextEditSubmit(); }}
+                placeholder='e.g. "Rewrite this paragraph to improve clarity" or "Expand the introduction"'
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 resize-none mb-4"
+              />
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowContextEditModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleContextEditSubmit}
+                  disabled={!contextEditInstruction.trim()}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-40"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Toast notification ──────────────────────────────────────────────── */}
+        {toast && (
+          <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-medium transition-all
+            ${toast.type === 'error' ? 'bg-red-600 text-white' : toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-gray-900 text-white'}`}
+          >
+            {toast.type === 'error' && (
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            {toast.type === 'info' && (
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            {toast.msg}
+          </div>
+        )}
+
       </div>
     );
   }
