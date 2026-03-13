@@ -1341,6 +1341,41 @@ export const runEditorAction = async (
   return cleanArticleHtml(raw.trim());
 };
 
+// ── Humanizer ─────────────────────────────────────────────────────────────────
+
+/**
+ * Rewrites the full article to sound natural and human-written.
+ * Reduces AI-typical patterns, improves sentence variation, maintains SEO.
+ */
+export const humanizeContent = async (html: string): Promise<string> => {
+  const prompt = `You are an expert human content editor and professional writer.
+
+Your task: Rewrite the following article so it sounds completely natural, conversational, and human-written — not AI-generated.
+
+Current HTML article:
+${html.slice(0, 7000)}
+
+Apply ALL of these rewriting rules:
+1. SENTENCE VARIATION: Mix very short sentences (3–6 words) with longer complex ones. Never write 3 consecutive sentences of the same length.
+2. NATURAL TRANSITIONS: Replace formal AI transitions (Furthermore, Moreover, In conclusion, It is important to note, Having said that) with natural ones (But, So, Here's the thing, That said, What's more).
+3. RHETORICAL QUESTIONS: Add 2–3 rhetorical questions to engage the reader. Example: "But does that really matter here?"
+4. ACTIVE VOICE: Convert passive constructions to active voice throughout.
+5. SPECIFICITY: Replace vague statements with specific examples, numbers, and concrete details.
+6. PARAGRAPH VARIETY: Mix single-sentence paragraphs with multi-sentence blocks.
+7. SEO PRESERVATION: Keep ALL keywords, headings, and factual content intact.
+8. HTML STRUCTURE: Return valid HTML only. Preserve all tags (h1, h2, h3, p, ul, li, table, strong, em).
+9. NO EMOJIS. No markdown. Pure HTML output.
+
+Return ONLY the rewritten HTML — no explanation, no preamble.`;
+
+  const response = await callGroq(
+    [{ role: 'user', content: prompt }],
+    { max_tokens: 8192 },
+  );
+  const raw = response.choices[0]?.message?.content || '';
+  return cleanArticleHtml(raw.trim());
+};
+
 // ── Quick text-selection actions ──────────────────────────────────────────────
 
 export type QuickActionType = 'rewrite' | 'expand' | 'shorten' | 'simplify';

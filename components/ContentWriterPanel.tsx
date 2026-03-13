@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { generateSeoBlogArticle, runEditorAction, runQuickAction, EditorActionType, QuickActionType, SeoArticleResult } from '../services/geminiService';
+import { generateSeoBlogArticle, runEditorAction, runQuickAction, humanizeContent, EditorActionType, QuickActionType, SeoArticleResult } from '../services/geminiService';
+import { detectAiContent, AiDetectionResult } from '../services/aiDetector';
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -312,6 +313,11 @@ const ContentWriterPanel: React.FC = () => {
   const [linkPreview, setLinkPreview] = useState<{ href: string; x: number; y: number } | null>(null);
   const savedSelectionRef = useRef<Range | null>(null);
 
+  // ── Sidebar tabs + AI Detection ───────────────────────────────────────────
+  const [sidebarTab, setSidebarTab] = useState<'seo' | 'ai'>('seo');
+  const [aiDetection, setAiDetection] = useState<AiDetectionResult | null>(null);
+  const [isHumanizing, setIsHumanizing] = useState(false);
+
   // ── Context AI menu ───────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showRitzMenu, setShowRitzMenu] = useState(false);
@@ -365,6 +371,12 @@ const ContentWriterPanel: React.FC = () => {
     setEditorScore(score);
     setEditorKd(res.keywordDensity);
     setEditorReadTime(res.readingTime || Math.round(words / 200));
+    // Run AI detection after content is loaded
+    setTimeout(() => {
+      if (editorRef.current) {
+        setAiDetection(detectAiContent(editorRef.current.innerHTML));
+      }
+    }, 300);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
@@ -743,6 +755,31 @@ const ContentWriterPanel: React.FC = () => {
     }
   }, [selectedArticle, saveSnapshot, handleEditorInput, showToast]);
 
+  // ── Humanize ──────────────────────────────────────────────────────────────
+
+  const handleHumanize = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const scrollTop = editor.parentElement?.scrollTop ?? 0;
+    saveSnapshot();
+    setIsHumanizing(true);
+    try {
+      const html = await humanizeContent(editor.innerHTML);
+      editor.innerHTML = html;
+      // Restore scroll position
+      if (editor.parentElement) editor.parentElement.scrollTop = scrollTop;
+      handleEditorInput();
+      // Re-run AI detection after humanize
+      setTimeout(() => setAiDetection(detectAiContent(editor.innerHTML)), 100);
+      setSidebarTab('ai');
+      showToast('Content humanized successfully!', 'success');
+    } catch {
+      showToast('Humanize failed. Please try again.', 'error');
+    } finally {
+      setIsHumanizing(false);
+    }
+  }, [saveSnapshot, handleEditorInput, showToast]);
+
   // ── Retry failed article ───────────────────────────────────────────────────
 
   const handleRetry = useCallback(async (article: Article) => {
@@ -1114,6 +1151,30 @@ const ContentWriterPanel: React.FC = () => {
                   );
                 })}
 
+                {/* Humanize */}
+                <button
+                  onClick={handleHumanize}
+                  disabled={!!activeAction || isHumanizing}
+                  className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all
+                    ${isHumanizing
+                      ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                      : 'bg-white text-violet-700 border-violet-200 hover:border-violet-400 hover:bg-violet-50'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {isHumanizing ? (
+                    <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none"
+                      style={{ animation: 'spin 0.8s linear infinite', transformOrigin: 'center' }}>
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                    </svg>
+                  )}
+                  {isHumanizing ? 'Humanizing...' : 'Humanize'}
+                </button>
+
                 {/* Error inline */}
                 {actionError && (
                   <span className="text-[11px] text-red-500 font-medium ml-2 flex items-center gap-1">
@@ -1279,95 +1340,246 @@ const ContentWriterPanel: React.FC = () => {
           </div>
 
           {/* ── RIGHT: Analysis panels ────────────────────────────────────── */}
-          <div className="space-y-5 overflow-y-auto">
+          <div className="flex flex-col overflow-hidden min-h-0">
 
-            {/* SEO Analysis ring */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h4 className="font-bold text-slate-800 mb-4">SEO Analysis</h4>
-              <ScoreRing score={editorScore || selectedArticle.seoScore} />
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Words</p>
-                  <p className="text-base font-bold text-slate-800">{editorWords > 0 ? editorWords.toLocaleString() : selectedArticle.wordCount.toLocaleString()}</p>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Read Time</p>
-                  <p className="text-base font-bold text-slate-800">{editorReadTime || res?.readingTime || '—'} min</p>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-3 col-span-2">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Keyword Density</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="flex-1 bg-slate-200 rounded-full h-1.5">
-                      <div
-                        className="bg-indigo-500 h-1.5 rounded-full transition-all"
-                        style={{ width: `${Math.min((editorKd || res?.keywordDensity || 0) * 33, 100)}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-bold text-slate-800">{editorKd || res?.keywordDensity || 0}%</span>
-                  </div>
-                </div>
-              </div>
+            {/* Tab switcher */}
+            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-4 shrink-0">
+              {(['seo', 'ai'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setSidebarTab(tab)}
+                  className={`flex-1 text-xs font-bold py-2 rounded-lg transition-all ${
+                    sidebarTab === tab
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {tab === 'seo' ? 'SEO Analysis' : 'AI Detection'}
+                </button>
+              ))}
             </div>
 
-            {/* SEO Metadata */}
-            {res && (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                <h4 className="font-bold text-slate-800 mb-4">SEO Metadata</h4>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">SEO Title</p>
-                    <input
-                      className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      defaultValue={res.seoTitle}
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">{res.seoTitle.length} / 60 chars</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Meta Description</p>
-                    <textarea
-                      rows={3}
-                      className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                      defaultValue={res.metaDescription}
-                    />
-                    <p className="text-[10px] text-slate-400 mt-0.5">{res.metaDescription.length} / 160 chars</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">URL Slug</p>
-                    <p className="text-sm font-mono text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg break-all">
-                      /{res.urlSlug}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Schema Markup</p>
-                    <p className="text-[11px] text-slate-500 bg-slate-50 px-3 py-2 rounded-lg">
-                      Article schema applied automatically
-                    </p>
+            {/* Tab content */}
+            <div className="flex-1 overflow-y-auto space-y-4">
+
+              {/* ── SEO TAB ───────────────────────────────────────────────── */}
+              {sidebarTab === 'seo' && (<>
+
+                {/* Score + stats */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                  <h4 className="font-bold text-slate-800 mb-4">SEO Analysis</h4>
+                  <ScoreRing score={editorScore || selectedArticle.seoScore} />
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Words</p>
+                      <p className="text-base font-bold text-slate-800">{editorWords > 0 ? editorWords.toLocaleString() : selectedArticle.wordCount.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Read Time</p>
+                      <p className="text-base font-bold text-slate-800">{editorReadTime || res?.readingTime || '—'} min</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-3 col-span-2">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Keyword Density</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 bg-slate-200 rounded-full h-1.5">
+                          <div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{ width: `${Math.min((editorKd || res?.keywordDensity || 0) * 33, 100)}%` }} />
+                        </div>
+                        <span className="text-sm font-bold text-slate-800">{editorKd || res?.keywordDensity || 0}%</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* Content Optimization panel */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h4 className="font-bold text-slate-800 mb-4">Content Optimization</h4>
-              {checks.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-4">Generate an article to see optimization checks.</p>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {checks.map(check => (
-                    <div key={check.label} className="flex items-center justify-between py-3">
-                      <span className="text-sm text-slate-700">{check.label}</span>
-                      {check.status === 'good' ? (
-                        <span className="text-xs font-semibold text-emerald-600">All good</span>
-                      ) : (
-                        <span className="text-xs font-semibold text-red-500">
-                          {check.issueCount} issue{check.issueCount !== 1 ? 's' : ''} found
-                        </span>
+                {/* SEO Metadata */}
+                {res && (
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <h4 className="font-bold text-slate-800 mb-4">SEO Metadata</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">SEO Title</p>
+                        <input className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" defaultValue={res.seoTitle} />
+                        <p className="text-[10px] text-slate-400 mt-1">{res.seoTitle.length} / 60 chars</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Meta Description</p>
+                        <textarea rows={3} className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none" defaultValue={res.metaDescription} />
+                        <p className="text-[10px] text-slate-400 mt-0.5">{res.metaDescription.length} / 160 chars</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">URL Slug</p>
+                        <p className="text-sm font-mono text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg break-all">/{res.urlSlug}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Schema Markup</p>
+                        <p className="text-[11px] text-slate-500 bg-slate-50 px-3 py-2 rounded-lg">Article schema applied automatically</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Content Optimization */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                  <h4 className="font-bold text-slate-800 mb-4">Content Optimization</h4>
+                  {checks.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-4">Generate an article to see optimization checks.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {checks.map(check => (
+                        <div key={check.label} className="flex items-center justify-between py-3">
+                          <span className="text-sm text-slate-700">{check.label}</span>
+                          {check.status === 'good'
+                            ? <span className="text-xs font-semibold text-emerald-600">All good</span>
+                            : <span className="text-xs font-semibold text-red-500">{check.issueCount} issue{check.issueCount !== 1 ? 's' : ''} found</span>
+                          }
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </>)}
+
+              {/* ── AI DETECTION TAB ──────────────────────────────────────── */}
+              {sidebarTab === 'ai' && (
+                <div className="space-y-4">
+                  {!aiDetection ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+                      <p className="text-sm text-slate-400">Open an article to run AI detection.</p>
+                    </div>
+                  ) : (<>
+
+                    {/* Risk Meter */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-bold text-slate-800">AI Risk Meter</h4>
+                        <button
+                          onClick={() => editorRef.current && setAiDetection(detectAiContent(editorRef.current.innerHTML))}
+                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                          Re-scan
+                        </button>
+                      </div>
+                      {/* Gradient risk bar */}
+                      <div className="relative h-4 rounded-full overflow-hidden mb-2 bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500">
+                        <div
+                          className="absolute top-0 bottom-0 right-0 bg-white/60 transition-all duration-700"
+                          style={{ left: `${aiDetection.aiProbability}%` }}
+                        />
+                        <div
+                          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-700"
+                          style={{
+                            left: `calc(${aiDetection.aiProbability}% - 8px)`,
+                            backgroundColor:
+                              aiDetection.riskLevel === 'high' ? '#ef4444' :
+                              aiDetection.riskLevel === 'medium' ? '#f59e0b' : '#10b981',
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-4">
+                        <span>LOW RISK</span>
+                        <span>MEDIUM</span>
+                        <span>HIGH RISK</span>
+                      </div>
+                      {/* Risk badge */}
+                      <div className={`flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm ${
+                        aiDetection.riskLevel === 'high'   ? 'bg-red-50 text-red-600' :
+                        aiDetection.riskLevel === 'medium' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                      }`}>
+                        <span className={`w-2 h-2 rounded-full ${
+                          aiDetection.riskLevel === 'high' ? 'bg-red-500' :
+                          aiDetection.riskLevel === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`} />
+                        {aiDetection.riskLevel === 'high' ? 'High AI Risk' :
+                         aiDetection.riskLevel === 'medium' ? 'Medium AI Risk' : 'Low AI Risk'}
+                      </div>
+                    </div>
+
+                    {/* Probability bars */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                      <h4 className="font-bold text-slate-800 mb-4">Detection Results</h4>
+                      <div className="space-y-4">
+                        {/* AI Probability */}
+                        <div>
+                          <div className="flex justify-between mb-1.5">
+                            <span className="text-xs font-semibold text-slate-600">AI Probability</span>
+                            <span className={`text-xs font-bold ${aiDetection.aiProbability >= 65 ? 'text-red-500' : aiDetection.aiProbability >= 35 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                              {aiDetection.aiProbability}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-700 ${aiDetection.aiProbability >= 65 ? 'bg-red-500' : aiDetection.aiProbability >= 35 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                              style={{ width: `${aiDetection.aiProbability}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* Human Probability */}
+                        <div>
+                          <div className="flex justify-between mb-1.5">
+                            <span className="text-xs font-semibold text-slate-600">Human Probability</span>
+                            <span className="text-xs font-bold text-emerald-600">{aiDetection.humanProbability}%</span>
+                          </div>
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${aiDetection.humanProbability}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Signal scores */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                      <h4 className="font-bold text-slate-800 mb-4">Signal Analysis</h4>
+                      <div className="space-y-4">
+                        {([
+                          { label: 'Perplexity',  value: aiDetection.perplexity,  tip: 'Vocabulary variety — higher is more human',  high: 'emerald', low: 'red'    },
+                          { label: 'Burstiness',  value: aiDetection.burstiness,  tip: 'Sentence length variation — higher is more human', high: 'emerald', low: 'red' },
+                          { label: 'Repetition',  value: aiDetection.repetition,  tip: 'Phrase repetition — lower is more human',   high: 'red',     low: 'emerald' },
+                        ] as const).map(({ label, value, tip, high, low }) => {
+                          const isRed   = high === 'red'     ? value >= 50 : value < 50;
+                          const barColor = isRed ? 'bg-red-400' : value >= 70 ? 'bg-emerald-500' : 'bg-amber-400';
+                          return (
+                            <div key={label}>
+                              <div className="flex justify-between mb-1">
+                                <div>
+                                  <span className="text-xs font-semibold text-slate-600">{label}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1.5">{tip}</span>
+                                </div>
+                                <span className="text-xs font-bold text-slate-700">{value}</span>
+                              </div>
+                              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${value}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Humanize CTA inside AI tab */}
+                      {aiDetection.aiProbability >= 35 && (
+                        <button
+                          onClick={handleHumanize}
+                          disabled={isHumanizing}
+                          className="mt-5 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-sm"
+                        >
+                          {isHumanizing ? (
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                            </svg>
+                          )}
+                          {isHumanizing ? 'Humanizing...' : 'Humanize Content'}
+                        </button>
                       )}
                     </div>
-                  ))}
+
+                  </>)}
                 </div>
               )}
+
             </div>
           </div>
         </div>
