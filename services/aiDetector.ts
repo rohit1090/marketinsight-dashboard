@@ -168,15 +168,16 @@ function computeRepetition(words: string[]): number {
  *
  * Returns an AiDetectionResult. Score breakdown:
  *
- *   Base score         = 35  (slight AI prior for generated web content)
+ *   Base score         = 38  (slight AI prior for generated web content)
  *   + Transition rate  max +20
  *   + Hedging density  max +18
  *   + AI vocabulary    max +15
  *   + Passive markers  max +10
+ *   + Repetition       max +10  ← phrase repetition is a strong AI signal
  *   + List openers     max +8
  *   + Uniformity       max +8
- *   - Informality      max -18
- *   - Short sentences  max -10
+ *   - Informality      max -12  (capped so contractions can't dominate)
+ *   - Short sentences  max -7
  *   - Extreme variety  max -6
  */
 export function detectAiContent(html: string): AiDetectionResult {
@@ -221,6 +222,10 @@ export function detectAiContent(html: string): AiDetectionResult {
   const passiveRate = (passiveCount / Math.max(sentences.length, 1));
   const passiveScore = Math.min(10, Math.round(passiveRate * 12));
 
+  // ── Signal: phrase repetition (higher = more AI-like) ────────────────────
+  const repetition = computeRepetition(words);
+  const repetitionScore = Math.min(10, Math.round(repetition * 0.13)); // 77 → 10pts
+
   // ── Signal: list openers ─────────────────────────────────────────────────
   const listOpenerCount = LIST_OPENERS.reduce((n, p) => textLower.includes(p) ? n + 1 : n, 0);
   const listOpenerScore = Math.min(8, listOpenerCount * 2);
@@ -230,13 +235,14 @@ export function detectAiContent(html: string): AiDetectionResult {
   const uniformityScore = Math.max(0, Math.round(((100 - burstiness) / 100) * 8)); // max 8
 
   // ── Counter-signal: informality / contractions ───────────────────────────
+  // Capped at 12 (not 18) so heavy contraction use can't overwhelm all AI signals
   const informalCount = INFORMAL_MARKERS.reduce((n, m) => textLower.includes(m) ? n + 1 : n, 0);
-  const informalScore = Math.min(18, informalCount * 3);
+  const informalScore = Math.min(12, informalCount * 2);
 
   // ── Counter-signal: short burst sentences (< 6 words) → human signal ─────
   const shortSentences = sentences.filter(s => s.split(/\s+/).length < 6).length;
   const shortRatio = shortSentences / Math.max(sentences.length, 1);
-  const shortScore = Math.min(10, Math.round(shortRatio * 50));
+  const shortScore = Math.min(7, Math.round(shortRatio * 40));
 
   // ── Counter-signal: extreme length variety ────────────────────────────────
   const lengths = sentences.map(s => s.split(/\s+/).length);
@@ -244,12 +250,13 @@ export function detectAiContent(html: string): AiDetectionResult {
   const extremeScore = (burstiness > 70 && hasVeryLong) ? 6 : 0;
 
   // ── Composite ────────────────────────────────────────────────────────────
-  const base = 35;
+  const base = 38;
   const rawAi = base
     + transitionScore
     + hedgeScore
     + aiVocabScore
     + passiveScore
+    + repetitionScore
     + listOpenerScore
     + uniformityScore
     - informalScore
@@ -266,8 +273,6 @@ export function detectAiContent(html: string): AiDetectionResult {
   // ── Display signals ───────────────────────────────────────────────────────
   // perplexity display = AI vocabulary density (higher = more AI-like)
   const perplexity = computeAiVocabDensity(words);
-  // repetition display = phrase repetition (higher = more AI-like)
-  const repetition = computeRepetition(words);
 
   return {
     aiProbability,
