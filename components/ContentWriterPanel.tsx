@@ -317,6 +317,7 @@ const ContentWriterPanel: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<'seo' | 'ai'>('seo');
   const [aiDetection, setAiDetection] = useState<AiDetectionResult | null>(null);
   const [isHumanizing, setIsHumanizing] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
 
   // ── Context AI menu ───────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -1453,10 +1454,24 @@ const ContentWriterPanel: React.FC = () => {
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="font-bold text-slate-800">AI Risk Meter</h4>
                         <button
-                          onClick={() => editorRef.current && setAiDetection(detectAiContent(editorRef.current.innerHTML))}
-                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                          disabled={isScanning}
+                          onClick={() => {
+                            if (!editorRef.current) return;
+                            setIsScanning(true);
+                            setTimeout(() => {
+                              setAiDetection(detectAiContent(editorRef.current!.innerHTML));
+                              setIsScanning(false);
+                            }, 600);
+                          }}
+                          className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          Re-scan
+                          {isScanning ? (
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                          ) : null}
+                          {isScanning ? 'Scanning…' : 'Re-scan'}
                         </button>
                       </div>
                       {/* Gradient risk bar */}
@@ -1531,7 +1546,7 @@ const ContentWriterPanel: React.FC = () => {
                       <h4 className="font-bold text-slate-800 mb-4">Signal Analysis</h4>
                       <div className="space-y-4">
                         {([
-                          { label: 'Perplexity',  value: aiDetection.perplexity,  tip: 'Vocabulary variety — higher is more human',  high: 'emerald', low: 'red'    },
+                          { label: 'Perplexity',  value: aiDetection.perplexity,  tip: 'AI vocabulary density — higher is more AI-like',  high: 'red', low: 'emerald'    },
                           { label: 'Burstiness',  value: aiDetection.burstiness,  tip: 'Sentence length variation — higher is more human', high: 'emerald', low: 'red' },
                           { label: 'Repetition',  value: aiDetection.repetition,  tip: 'Phrase repetition — lower is more human',   high: 'red',     low: 'emerald' },
                         ] as const).map(({ label, value, tip, high, low }) => {
