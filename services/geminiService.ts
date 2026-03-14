@@ -376,7 +376,7 @@ Return ONLY valid JSON (no markdown fences, no extra text):
   "primaryKeyword": "main keyword phrase",
   "secondaryKeywords": ["kw1", "kw2", "kw3", "kw4", "kw5"],
   "lsiKeywords": ["lsi1", "lsi2", "lsi3", "lsi4", "lsi5", "lsi6"],
-  "article": "FULL HTML ARTICLE following AEO structure — minimum 1200 words, target 1200–1500. Valid HTML only (no Markdown). 5–8 question-based H2 headings, H3 subsections, featured snippet Short Answer in each H2, TLDR, Conclusion, author block. Written in natural human style with contractions, varied sentence lengths, and no formal AI transition words.",
+  "article": "FULL HTML ARTICLE following AEO structure — minimum 1200 words, target 1200–1500. Valid HTML only (no Markdown). 5–8 question-based H2 headings, H3 subsections, TLDR, Conclusion, author block. Written in natural human style with contractions, varied sentence lengths, and no formal AI transition words.",
   "seoScore": 88,
   "readingTime": 8,
   "wordCount": 1250,
@@ -393,7 +393,6 @@ const SEO_RULES = `
 - Use proper <h2> and <h3> HTML hierarchy — NO Markdown headings (#, ##, ###)
 - Add year 2026 where relevant for freshness signals
 - Include semantic keywords and long-tail keyword variations
-- Every <h2> section MUST open with <p><strong>Short Answer:</strong> …</p> (featured snippet format)
 - Writing tone: direct, conversational, human — follow the HUMAN WRITING STYLE rules above
 - Include at least one internal contextual reference (comparison or related topic mention)
 - Include at least one external reference (named official source, publication, or governing body)`;
@@ -548,7 +547,7 @@ STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
 </ul>
 
 STEP 3 — DIRECT ANSWER
-<p><strong>Direct Answer:</strong> [2–3 sentence factual answer with main keyword. Optimized for AI featured snippets.]</p>
+<p>[2–3 sentence factual answer with main keyword. Optimized for AI featured snippets.]</p>
 
 STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
@@ -564,7 +563,7 @@ STEP 4 — TABLE OF CONTENTS
 STEP 5 — BODY SECTIONS (5–7 question-based H2 sections, each following this pattern):
 
 <h2><strong>Why Is [City] a Great Place for [Topic]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence direct answer about the city's market for this topic.]</p>
+<p>[1–2 sentence direct answer about the city's market for this topic.]</p>
 <p>[4–6 sentence explanation — market size, demand, infrastructure, growth. Mention year 2026.]</p>
 <h3><strong>Key Market Factors</strong></h3>
 <ul>
@@ -575,7 +574,7 @@ STEP 5 — BODY SECTIONS (5–7 question-based H2 sections, each following this 
 <p>[Include a contextual reference — e.g. "According to industry reports, this sector has grown by X% in major Indian metros." or compare with another city.]</p>
 
 <h2><strong>Who Are the Top [Topic] Providers in [City]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence summary of top options available.]</p>
+<p>[1–2 sentence summary of top options available.]</p>
 <p>[Overview paragraph — 3–4 sentences introducing the businesses.]</p>
 <h3>[Business 1 Name]</h3>
 <ul>
@@ -595,7 +594,7 @@ STEP 5 — BODY SECTIONS (5–7 question-based H2 sections, each following this 
 ${brandName ? `<h3><strong>About ${brandName}</strong></h3>\n<p>[2–3 sentences naturally describing ${brandName}, its location, services, and why customers choose it.]</p>` : ''}
 
 <h2><strong>How Do These Providers Compare?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence summary of what differentiates the options.]</p>
+<p>[1–2 sentence summary of what differentiates the options.]</p>
 <table>
   <thead><tr><th>Provider</th><th>Location</th><th>Price Range</th><th>Best For</th></tr></thead>
   <tbody>
@@ -611,7 +610,7 @@ ${brandName ? `<h3><strong>About ${brandName}</strong></h3>\n<p>[2–3 sentences
 [IMPORTANT: Include ALL businesses from research data. Minimum 7 rows required.]
 
 <h2><strong>How Do You Choose the Right Provider?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence summary of key selection criteria.]</p>
+<p>[1–2 sentence summary of key selection criteria.]</p>
 <p>[3–4 sentence explanation of what matters most when choosing.]</p>
 <h3><strong>5 Factors to Evaluate</strong></h3>
 <ol>
@@ -630,7 +629,7 @@ ${brandName ? `<h3><strong>About ${brandName}</strong></h3>\n<p>[2–3 sentences
 <p>[Include an external reference — e.g. "Consumer forums like JustDial and Google Reviews are reliable sources to verify credibility before committing."]</p>
 
 <h2><strong>What Are the Key Questions to Ask Before Hiring?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer about what to clarify upfront.]</p>
+<p>[1–2 sentence answer about what to clarify upfront.]</p>
 <ul>
   <li>[Question 1 with brief explanation]</li>
   <li>[Question 2 with brief explanation]</li>
@@ -685,7 +684,7 @@ STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
 </ul>
 
 STEP 3 — DIRECT ANSWER
-<p><strong>Direct Answer:</strong> [2–3 sentence factual answer naming top 2–3 products and what makes them stand out. Contains main keyword.]</p>
+<p>[2–3 sentence factual answer naming top 2–3 products and what makes them stand out. Contains main keyword.]</p>
 
 STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
@@ -701,7 +700,7 @@ STEP 4 — TABLE OF CONTENTS
 STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 
 <h2><strong>Why Does [Topic Category] Matter in 2026?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence direct answer about why this product category is important today.]</p>
+<p>[1–2 sentence direct answer about why this product category is important today.]</p>
 <p>[4–6 sentence explanation — market trends, consumer demand, why buying the right one matters.]</p>
 <h3><strong>Key Trends in This Category</strong></h3>
 <ul>
@@ -712,7 +711,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 <p>[Include an external reference — e.g. "According to industry analysts, this segment grew by X% in 2025 driven by…"]</p>
 
 <h2><strong>What Are the Top [Topic] Products Available?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence overview of top picks.]</p>
+<p>[1–2 sentence overview of top picks.]</p>
 <p>[Overview paragraph — 3–4 sentences introducing product landscape.]</p>
 ${brandName ? `<h3>${brandName}</h3>
 <ul>
@@ -744,7 +743,7 @@ ${brandName ? `<h3>${brandName}</h3>
 [Repeat <h3>/<ul> blocks for 6–8 total products — minimum 7 required]
 
 <h2><strong>How Do These Products Compare?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence summary of how options differ by price, features, and use case.]</p>
+<p>[1–2 sentence summary of how options differ by price, features, and use case.]</p>
 <table>
   <thead><tr><th>Product</th><th>Brand</th><th>Price Range</th><th>Best For</th><th>Rating</th></tr></thead>
   <tbody>
@@ -760,7 +759,7 @@ ${brandName ? `<h3>${brandName}</h3>
 [IMPORTANT: Table must have minimum 7 rows — include all products reviewed above]
 
 <h2><strong>What Should You Look for Before Buying [Topic]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer covering the most critical buying factor.]</p>
+<p>[1–2 sentence answer covering the most critical buying factor.]</p>
 <p>[3–4 sentence buying guide intro.]</p>
 <h3><strong>5 Key Factors to Consider</strong></h3>
 <ol>
@@ -779,7 +778,7 @@ ${brandName ? `<h3>${brandName}</h3>
 <p>[Include an internal contextual reference — e.g. "Buyers comparing [Product A] vs [Product B] often overlook X, which significantly impacts long-term value."]</p>
 
 <h2><strong>Which [Topic] Product Is Right for You?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer based on different buyer profiles.]</p>
+<p>[1–2 sentence answer based on different buyer profiles.]</p>
 <ul>
   <li><strong>Best for Budget Buyers:</strong> [Product name + reason]</li>
   <li><strong>Best for Power Users:</strong> [Product name + reason]</li>
@@ -838,7 +837,7 @@ STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
 </ul>
 
 STEP 3 — DIRECT ANSWER
-<p><strong>Direct Answer:</strong> [2–3 sentence factual answer with verified details about the exam/topic. Contains main keyword. AI engines read this for featured snippets.]</p>
+<p>[2–3 sentence factual answer with verified details about the exam/topic. Contains main keyword. AI engines read this for featured snippets.]</p>
 
 STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
@@ -855,7 +854,7 @@ STEP 4 — TABLE OF CONTENTS
 STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 
 <h2><strong>What Is [Topic] and Who Should Pursue It?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence factual answer defining the topic and its target audience.]</p>
+<p>[1–2 sentence factual answer defining the topic and its target audience.]</p>
 <p>[4–6 sentence explanation — what it is, governing body, global/national recognition, who benefits.]</p>
 <h3><strong>Who Is This Designed For?</strong></h3>
 <ul>
@@ -866,7 +865,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 <p>[Include an external reference — e.g. "According to [Official Body/Publication], this certification is recognized in over X countries and held by Y+ professionals worldwide."]</p>
 
 <h2><strong>What Is the Official Syllabus and Exam Structure?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence factual answer naming the official parts/subjects.]</p>
+<p>[1–2 sentence factual answer naming the official parts/subjects.]</p>
 <p>[4–6 sentence explanation of the complete verified syllabus structure.]</p>
 <h3><strong>Core Subject Areas</strong></h3>
 <ul>
@@ -884,7 +883,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 </ul>
 
 <h2><strong>What Are the Eligibility Requirements?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence factual answer about who can apply.]</p>
+<p>[1–2 sentence factual answer about who can apply.]</p>
 <p>[3–4 sentence explanation of official eligibility criteria.]</p>
 <h3><strong>Minimum Qualifications Required</strong></h3>
 <ul>
@@ -899,7 +898,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 </ul>
 
 <h2><strong>What Is the Exam Pattern and Marking Scheme?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence factual answer about format and scoring.]</p>
+<p>[1–2 sentence factual answer about format and scoring.]</p>
 <p>[3–4 sentence explanation of the official exam format.]</p>
 <h3><strong>Exam Format Details</strong></h3>
 <ul>
@@ -912,7 +911,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 <p>[Include an internal contextual reference — e.g. "Candidates often compare [Topic] with [Related Certification] — both require rigorous preparation but differ in focus areas."]</p>
 
 <h2><strong>How Should You Prepare for [Topic]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer about the most effective preparation approach.]</p>
+<p>[1–2 sentence answer about the most effective preparation approach.]</p>
 <p>[3–4 sentence intro to preparation strategy.]</p>
 <h3><strong>Step-by-Step Study Plan</strong></h3>
 <ol>
@@ -931,7 +930,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 </ul>
 
 <h2><strong>What Are the Career Benefits After Completing [Topic]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer about career impact.]</p>
+<p>[1–2 sentence answer about career impact.]</p>
 <p>[3–4 sentence overview of career opportunities and salary impact.]</p>
 <h3><strong>Career Paths Available</strong></h3>
 <ul>
@@ -947,7 +946,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 </ul>
 
 ${brandName ? `<h2><strong>How Does ${brandName} Help with [Topic] Preparation?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer about what ${brandName} offers for this topic.]</p>
+<p>[1–2 sentence answer about what ${brandName} offers for this topic.]</p>
 <p>[2–3 sentences naturally describing ${brandName}'s program, instructors, materials, and success rates. Do not make it sound like an ad.]</p>
 <h3><strong>What ${brandName} Offers</strong></h3>
 <ul>
@@ -1002,7 +1001,7 @@ STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
 </ul>
 
 STEP 3 — DIRECT ANSWER
-<p><strong>Direct Answer:</strong> [2–3 sentence factual answer defining the topic and its primary importance. Contains main keyword.]</p>
+<p>[2–3 sentence factual answer defining the topic and its primary importance. Contains main keyword.]</p>
 
 STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
@@ -1018,7 +1017,7 @@ STEP 4 — TABLE OF CONTENTS
 STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 
 <h2><strong>What Is [Topic] and Why Does It Matter?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence direct definition with context.]</p>
+<p>[1–2 sentence direct definition with context.]</p>
 <p>[4–6 sentence explanation — background, history, how it works, current relevance in 2026.]</p>
 <h3><strong>Core Concepts Explained</strong></h3>
 <ul>
@@ -1029,7 +1028,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 <p>[Include an external reference — e.g. "Research published in [Journal/Organization] shows that X, reinforcing the importance of understanding this topic."]</p>
 
 <h2><strong>What Are the Key Benefits of [Topic]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence summary of top 2–3 benefits.]</p>
+<p>[1–2 sentence summary of top 2–3 benefits.]</p>
 <p>[3–4 sentence overview of why these benefits matter.]</p>
 <h3><strong>[Benefit 1 Name]</strong></h3>
 <p>[2–3 sentences explaining this benefit with evidence or a real-world example.]</p>
@@ -1043,7 +1042,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 <p>[2–3 sentences explaining this benefit with evidence or a real-world example.]</p>
 
 <h2><strong>What Does the Research and Expert Evidence Say?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence summary of what experts/studies say about this topic.]</p>
+<p>[1–2 sentence summary of what experts/studies say about this topic.]</p>
 <p>[4–6 sentence explanation of research findings, expert consensus, and verified statistics.]</p>
 <h3><strong>Key Studies and Statistics</strong></h3>
 <ul>
@@ -1055,7 +1054,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 <p>[Include an internal contextual reference — e.g. "This aligns with related research on [connected topic], which shows that X and Y are closely linked."]</p>
 
 <h2><strong>How Can You Apply [Topic] Practically?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer about immediate, actionable ways to apply this knowledge.]</p>
+<p>[1–2 sentence answer about immediate, actionable ways to apply this knowledge.]</p>
 <p>[3–4 sentence intro to practical applications.]</p>
 <h3><strong>7 Actionable Tips for Immediate Results</strong></h3>
 <ol>
@@ -1069,7 +1068,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 </ol>
 
 <h2><strong>What Are the Common Myths About [Topic]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer about the most widespread misconception.]</p>
+<p>[1–2 sentence answer about the most widespread misconception.]</p>
 <p>[2–3 sentence intro explaining why myths form around this topic.]</p>
 <h3><strong>Myths vs Reality</strong></h3>
 <ul>
@@ -1080,7 +1079,7 @@ STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 </ul>
 
 ${brandName ? `<h2><strong>How Does ${brandName} Help with [Topic]?</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence answer about ${brandName}'s role in this topic area.]</p>
+<p>[1–2 sentence answer about ${brandName}'s role in this topic area.]</p>
 <p>[2–3 sentences naturally describing ${brandName}, its offerings, and why it is a credible resource. Informative, not promotional.]</p>
 <h3><strong>What ${brandName} Provides</strong></h3>
 <ul>
@@ -1141,7 +1140,7 @@ STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
 </ul>
 
 STEP 3 — DIRECT ANSWER
-<p><strong>Direct Answer:</strong> [2–3 sentence factual answer. Contains main keyword. Optimized for AI featured snippets.]</p>
+<p>[2–3 sentence factual answer. Contains main keyword. Optimized for AI featured snippets.]</p>
 
 STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
@@ -1155,7 +1154,7 @@ Choose the structure that best fits the topic, then write 5–7 question-based H
 Each section MUST follow this pattern:
 
 <h2><strong>[Question heading ending with ?]</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence direct answer — featured snippet format]</p>
+<p>[1–2 sentence direct answer — featured snippet format]</p>
 <p>[Detailed explanation — 4–6 sentences with verified facts and specific details]</p>
 <h3><strong>[Relevant subsection]</strong></h3>
 <ul>
@@ -1174,7 +1173,7 @@ CONTENT DEPTH REQUIREMENTS per section:
 
 ${brandName ? `BRAND SECTION (required):
 <h2><strong>About ${brandName}</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence intro to ${brandName} and its relevance to the topic.]</p>
+<p>[1–2 sentence intro to ${brandName} and its relevance to the topic.]</p>
 <p>[2–3 sentences naturally describing ${brandName}, its offerings, and why users trust it. Informative, not promotional.]</p>
 <h3><strong>Why Choose ${brandName}?</strong></h3>
 <ul>
@@ -1298,7 +1297,7 @@ STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
 </ul>
 
 STEP 3 — DIRECT ANSWER (featured snippet target)
-<p><strong>Direct Answer:</strong> [2–3 sentence factual answer. Must contain main keyword. This is what AI engines read for snippets.]</p>
+<p>[2–3 sentence factual answer. Must contain main keyword. This is what AI engines read for snippets.]</p>
 
 STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
@@ -1315,7 +1314,7 @@ STEP 5 — BODY SECTIONS (minimum 5 H2 sections, each with H3 subsections)
 Each H2 section MUST follow this exact pattern:
 
 <h2><strong>[Question heading ending with ?]</strong></h2>
-<p><strong>Short Answer:</strong> [1–2 sentence direct answer to the question]</p>
+<p>[1–2 sentence direct answer to the question]</p>
 <p>[Detailed explanation paragraph — 4–6 sentences with verified facts]</p>
 <h3><strong>[Subsection title]</strong></h3>
 <ul>
