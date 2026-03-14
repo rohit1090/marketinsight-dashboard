@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { generateSeoBlogArticle, runEditorAction, runQuickAction, humanizeContent, EditorActionType, QuickActionType, SeoArticleResult } from '../services/geminiService';
 import { detectAiContent, AiDetectionResult } from '../services/aiDetector';
+import { useCurrency } from '../services/useCurrency';
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -276,9 +277,74 @@ const ScoreRing: React.FC<{ score: number }> = ({ score }) => {
   );
 };
 
+// ─── Editor overlay skeletons ─────────────────────────────────────────────────
+
+const ACTION_LABELS: Record<EditorActionType, string> = {
+  faq:   'Generating FAQ…',
+  list:  'Generating List…',
+  table: 'Generating Table…',
+  edit:  'Rewriting with AI…',
+};
+
+const StatusDots: React.FC<{ color?: string }> = ({ color = 'bg-indigo-400' }) => (
+  <>
+    {[0, 150, 300].map(d => (
+      <div key={d} className={`w-2 h-2 rounded-full ${color} animate-bounce`} style={{ animationDelay: `${d}ms` }} />
+    ))}
+  </>
+);
+
+/** Content-structured skeleton — document-like shimmer lines covering the full editor area */
+const ContentSkeleton: React.FC<{ label: string; dotColor?: string; textColor?: string }> = ({
+  label,
+  dotColor = 'bg-indigo-400',
+  textColor = 'text-indigo-500',
+}) => (
+  <div className="absolute inset-0 z-20 bg-white flex flex-col px-8 py-6 overflow-hidden">
+    {/* Title block */}
+    <div className="h-6 w-3/5 rounded-lg animate-shimmer mb-2" />
+    <div className="h-3.5 w-2/5 rounded animate-shimmer mb-5" />
+    <div className="h-px bg-slate-100 mb-5" />
+    {/* Section 1 */}
+    <div className="h-4 w-2/5 rounded animate-shimmer mb-3" />
+    <div className="space-y-2 mb-5">
+      <div className="h-3 w-full rounded animate-shimmer" />
+      <div className="h-3 w-11/12 rounded animate-shimmer" />
+      <div className="h-3 w-4/5 rounded animate-shimmer" />
+    </div>
+    {/* Section 2 */}
+    <div className="h-4 w-1/3 rounded animate-shimmer mb-3" />
+    <div className="space-y-2 mb-5">
+      <div className="h-3 w-full rounded animate-shimmer" />
+      <div className="h-3 w-10/12 rounded animate-shimmer" />
+      <div className="h-3 w-3/4 rounded animate-shimmer" />
+    </div>
+    {/* Section 3 */}
+    <div className="h-4 w-2/5 rounded animate-shimmer mb-3" />
+    <div className="space-y-2">
+      <div className="h-3 w-full rounded animate-shimmer" />
+      <div className="h-3 w-5/6 rounded animate-shimmer" />
+    </div>
+    {/* Status bar at bottom */}
+    <div className="absolute bottom-0 left-0 right-0 flex items-center gap-2 px-8 py-5 bg-white/80 backdrop-blur-sm border-t border-slate-100">
+      <StatusDots color={dotColor} />
+      <span className={`text-xs font-semibold ml-1 ${textColor}`}>{label}</span>
+    </div>
+  </div>
+);
+
+// ─── Skeleton components ──────────────────────────────────────────────────────
+
+const SidebarSkeleton: React.FC = () => (
+  <div className="rounded-2xl overflow-hidden animate-shimmer h-64" />
+);
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const ContentWriterPanel: React.FC = () => {
+  // Currency — auto-detected from user location, silently injected into prompts
+  const { currency } = useCurrency();
+
   // Form state
   const [topic, setTopic] = useState('');
   const [brandName, setBrandName] = useState('');
@@ -293,8 +359,9 @@ const ContentWriterPanel: React.FC = () => {
     } catch { return []; }
   });
 
-  // Progress per generating article
+  // Progress + status message per generating article
   const [genProgress, setGenProgress] = useState<Record<string, number>>({});
+  const [genStatus, setGenStatus] = useState<Record<string, string>>({});
 
   const isGenerating = articles.some(a => a.status === 'generating');
 
@@ -317,6 +384,7 @@ const ContentWriterPanel: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<'seo' | 'ai'>('seo');
   const [aiDetection, setAiDetection] = useState<AiDetectionResult | null>(null);
   const [isHumanizing, setIsHumanizing] = useState(false);
+  const [humanizeStatus, setHumanizeStatus] = useState('Humanizing your content…');
   const [isScanning, setIsScanning] = useState(false);
 
   // ── Context AI menu ───────────────────────────────────────────────────────
@@ -342,6 +410,7 @@ const ContentWriterPanel: React.FC = () => {
   useEffect(() => {
     sessionStorage.setItem('cw_articles', JSON.stringify(articles));
   }, [articles]);
+
 
   const selectedArticle = articles.find(a => a.id === selectedId) ?? null;
 
@@ -764,8 +833,9 @@ const ContentWriterPanel: React.FC = () => {
     const scrollTop = editor.parentElement?.scrollTop ?? 0;
     saveSnapshot();
     setIsHumanizing(true);
+    setHumanizeStatus('Restructuring content format…');
     try {
-      const html = await humanizeContent(editor.innerHTML);
+      const html = await humanizeContent(editor.innerHTML, setHumanizeStatus);
       editor.innerHTML = html;
       // Restore scroll position
       if (editor.parentElement) editor.parentElement.scrollTop = scrollTop;
@@ -796,8 +866,10 @@ const ContentWriterPanel: React.FC = () => {
       setGenProgress(prev => ({ ...prev, [id]: prog }));
     }, 700);
 
+    const onStatus = (msg: string) => setGenStatus(prev => ({ ...prev, [id]: msg }));
+
     try {
-      const result = await generateSeoBlogArticle(t, bn || undefined, cat || undefined, article.language);
+      const result = await generateSeoBlogArticle(t, bn || undefined, cat || undefined, article.language, currency.code !== 'USD' ? currency.code : undefined, onStatus);
       const wc = countArticleWords(result.article);
       const computedScore = computeSeoScore(
         result.article, wc,
@@ -812,16 +884,18 @@ const ContentWriterPanel: React.FC = () => {
           a.id === id ? { ...a, status: 'ready', result, wordCount: wc, seoScore: computedScore } : a
         ));
         setGenProgress(prev => { const n = { ...prev }; delete n[id]; return n; });
+        setGenStatus(prev => { const n = { ...prev }; delete n[id]; return n; });
       }, 700);
     } catch (err) {
       clearInterval(interval);
       setGenProgress(prev => { const n = { ...prev }; delete n[id]; return n; });
+      setGenStatus(prev => { const n = { ...prev }; delete n[id]; return n; });
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setArticles(prev => prev.map(a =>
         a.id === id ? { ...a, status: 'error', errorMessage: msg } : a
       ));
     }
-  }, []);
+  }, [currency]);
 
   // ── Generate article ──────────────────────────────────────────────────────
 
@@ -852,12 +926,16 @@ const ContentWriterPanel: React.FC = () => {
       setGenProgress(prev => ({ ...prev, [id]: prog }));
     }, 700);
 
+    const onStatus = (msg: string) => setGenStatus(prev => ({ ...prev, [id]: msg }));
+
     try {
       const result = await generateSeoBlogArticle(
         topic.trim(),
         brandName.trim() || undefined,
         category || undefined,
         selectedLanguage !== 'English' ? selectedLanguage : undefined,
+        currency.code !== 'USD' ? currency.code : undefined,
+        onStatus,
       );
 
       // Always recount from actual article text so list and editor stay in sync
@@ -879,22 +957,26 @@ const ContentWriterPanel: React.FC = () => {
           a.id === id ? { ...a, status: 'ready', result, wordCount: wc, seoScore: computedScore } : a
         ));
         setGenProgress(prev => { const n = { ...prev }; delete n[id]; return n; });
+        setGenStatus(prev => { const n = { ...prev }; delete n[id]; return n; });
       }, 700);
     } catch (err) {
       clearInterval(interval);
       setGenProgress(prev => { const n = { ...prev }; delete n[id]; return n; });
+      setGenStatus(prev => { const n = { ...prev }; delete n[id]; return n; });
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setArticles(prev => prev.map(a =>
         a.id === id ? { ...a, status: 'error', errorMessage: msg } : a
       ));
     }
-  }, [topic, brandName, category]);
+  }, [topic, brandName, category, currency]);
 
   // ── EDITOR VIEW ───────────────────────────────────────────────────────────
 
   if (selectedArticle && selectedId) {
+    const isArticleGenerating = selectedArticle.status === 'generating';
     const checks = analyzeContent(selectedArticle);
     const res = selectedArticle.result;
+    const activeStatusMsg = genStatus[selectedId];
 
     return (
       <div className="flex flex-col h-screen overflow-hidden pt-2">
@@ -1217,8 +1299,28 @@ const ContentWriterPanel: React.FC = () => {
               )}
             </div>
 
-            {/* Editable content area */}
-            <div className="relative flex-1 overflow-y-auto">
+            {/* Editable content area — outer wrapper is non-scrolling so absolute overlays fill visible bounds */}
+            <div className="relative flex-1 overflow-hidden flex flex-col min-h-0">
+              {/* Content-structured skeleton — shown for ANY active AI operation */}
+              {isArticleGenerating && (
+                <ContentSkeleton label={activeStatusMsg || 'Generating your article…'} dotColor="bg-indigo-400" textColor="text-indigo-500" />
+              )}
+              {!isArticleGenerating && isHumanizing && (
+                <ContentSkeleton label={humanizeStatus} dotColor="bg-violet-400" textColor="text-violet-500" />
+              )}
+              {!isArticleGenerating && !isHumanizing && (activeAction || contextActionLoading) && (() => {
+                const action = activeAction ?? contextActionLoading!;
+                return (
+                  <ContentSkeleton
+                    label={ACTION_LABELS[action]}
+                    dotColor={action === 'edit' ? 'bg-purple-400' : 'bg-indigo-400'}
+                    textColor={action === 'edit' ? 'text-purple-500' : 'text-indigo-500'}
+                  />
+                );
+              })()}
+
+              {/* Scroll container — always mounted so editorRef stays stable */}
+            <div className="flex-1 overflow-y-auto relative">
               <div
                 ref={editorRef}
                 contentEditable
@@ -1282,6 +1384,7 @@ const ContentWriterPanel: React.FC = () => {
                   <span className="truncate">{linkPreview.href}</span>
                 </div>
               )}
+            </div>
             </div>
 
             {/* ── Selection Bar (highlight toolbar) ─────────────────────────── */}
@@ -1366,8 +1469,11 @@ const ContentWriterPanel: React.FC = () => {
             {/* Tab content */}
             <div className="flex-1 overflow-y-auto space-y-4">
 
+              {/* ── LOADING SKELETON ──────────────────────────────────────── */}
+              {isArticleGenerating && <SidebarSkeleton />}
+
               {/* ── SEO TAB ───────────────────────────────────────────────── */}
-              {sidebarTab === 'seo' && (<>
+              {!isArticleGenerating && sidebarTab === 'seo' && (<>
 
                 {/* Score + stats */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
@@ -1444,7 +1550,7 @@ const ContentWriterPanel: React.FC = () => {
               </>)}
 
               {/* ── AI DETECTION TAB ──────────────────────────────────────── */}
-              {sidebarTab === 'ai' && (
+              {!isArticleGenerating && sidebarTab === 'ai' && (
                 <div className="space-y-4">
                   {!aiDetection ? (
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
@@ -1989,13 +2095,18 @@ const ContentWriterPanel: React.FC = () => {
                           <span className="text-sm font-semibold text-slate-900 block max-w-xs">
                             {article.topic}
                           </span>
-                          <div className="flex items-center gap-1 mt-0.5">
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                             </svg>
                             <span className="text-[11px] text-slate-400">
                               {article.category ? article.category.replace('_', ' ') : 'Deep Research'}
                             </span>
+                            {article.result?.modelUsed && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-indigo-50 text-indigo-500 rounded-full">
+                                {article.result.modelUsed}
+                              </span>
+                            )}
                           </div>
                           <button className="mt-1 text-[11px] text-indigo-600 hover:text-indigo-800 font-medium">
                             Add Tag +
@@ -2009,7 +2120,14 @@ const ContentWriterPanel: React.FC = () => {
                       {isGen && prog !== undefined ? (
                         <div className="flex items-center gap-2">
                           <CircularProgress progress={prog} />
-                          <span className="text-xs text-slate-500">{Math.round(prog)}%</span>
+                          <div>
+                            <span className="text-xs text-slate-500 block">{Math.round(prog)}%</span>
+                            {genStatus[article.id] && (
+                              <span className="text-[11px] text-amber-600 font-medium block leading-tight mt-0.5">
+                                {genStatus[article.id]}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <span className="text-sm text-slate-500">{relativeTime(article.createdAt)}</span>

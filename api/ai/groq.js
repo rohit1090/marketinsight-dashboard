@@ -36,6 +36,10 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      const retryAfter = response.headers.get('retry-after') || response.headers.get('x-ratelimit-reset-requests');
+      if (retryAfter) data._retryAfter = retryAfter;
+    }
     return res.status(response.ok ? 200 : response.status).json(data);
   } catch (error) {
     console.error('[groq proxy] error:', error);

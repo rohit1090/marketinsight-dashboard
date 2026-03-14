@@ -109,7 +109,7 @@ function tokenizeWords(text: string): string[] {
 
 /**
  * AI Vocabulary Density — what fraction of words are LLM-preferred formal words.
- * Returns 0–100 (higher = more AI-like). Used as `perplexity` display signal.
+ * Returns 0–100 (higher = more AI-like). Used in composite scoring.
  */
 function computeAiVocabDensity(words: string[]): number {
   if (words.length < 20) return 50;
@@ -117,6 +117,41 @@ function computeAiVocabDensity(words: string[]): number {
   const density = aiWordCount / words.length;
   // 0% → 0, 3%+ → 100
   return Math.min(100, Math.round((density / 0.03) * 100));
+}
+
+const AI_PERPLEXITY_WORDS = [
+  'utilize', 'leverage', 'furthermore', 'additionally',
+  'moreover', 'nevertheless', 'consequently', 'therefore',
+  'significant', 'comprehensive', 'facilitate', 'demonstrate',
+  'subsequently', 'aforementioned', 'optimal', 'paradigm',
+  'implement', 'endeavor', 'prioritize', 'streamline',
+];
+
+/**
+ * Perplexity — vocabulary unpredictability.
+ * Higher unique-word ratio + fewer AI buzzwords = higher perplexity (more human).
+ * Returns 0–100 (higher = more unpredictable = more human-like).
+ */
+function calculatePerplexity(text: string): number {
+  const words = text.toLowerCase()
+    .replace(/[^a-z\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 3);
+
+  if (words.length === 0) return 0;
+
+  const freq: Record<string, number> = {};
+  words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+
+  const totalWords = words.length;
+  const uniqueWords = Object.keys(freq).length;
+  const aiWordCount = words.filter(w => AI_PERPLEXITY_WORDS.includes(w)).length;
+
+  const uniqueRatio = uniqueWords / totalWords;
+  const aiPenalty = aiWordCount / totalWords;
+
+  const score = Math.round((uniqueRatio * 100) - (aiPenalty * 200));
+  return Math.max(0, Math.min(100, score));
 }
 
 /**
@@ -271,8 +306,8 @@ export function detectAiContent(html: string): AiDetectionResult {
     aiProbability >= 35 ? 'medium' : 'low';
 
   // ── Display signals ───────────────────────────────────────────────────────
-  // perplexity display = AI vocabulary density (higher = more AI-like)
-  const perplexity = computeAiVocabDensity(words);
+  // perplexity = vocabulary unpredictability (higher = more human-like)
+  const perplexity = calculatePerplexity(text);
 
   return {
     aiProbability,

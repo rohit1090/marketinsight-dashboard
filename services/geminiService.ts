@@ -24,6 +24,7 @@ export interface SeoArticleResult {
   wordCount: number;
   keywordDensity: number;
   rankingExplanation: string;
+  modelUsed?: string;
 }
 
 export interface FaqItem {
@@ -48,6 +49,8 @@ interface GeminiProxyResponse {
 interface GroqProxyResponse {
   choices: Array<{ message: { content: string } }>;
   error?: string;
+  _modelUsed?: string;
+  _retryAfter?: string;
 }
 
 async function callGemini(
@@ -151,22 +154,101 @@ function cleanArticleHtml(raw: string): string {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Groq model pool — ordered best quality first ────────────────────────────
+interface GroqModel {
+  id: string;
+  label: string;
+  tpm: number;
+  quality: 'highest' | 'high' | 'medium';
+}
+
+const GROQ_MODELS: GroqModel[] = [
+  { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout',   tpm: 30000, quality: 'high'    },
+  { id: 'llama-3.3-70b-versatile',                   label: 'Llama 3.3 70B',   tpm: 12000, quality: 'highest' },
+  { id: 'moonshotai/kimi-k2-instruct',               label: 'Kimi K2',         tpm: 10000, quality: 'high'    },
+  { id: 'openai/gpt-oss-120b',                       label: 'GPT OSS 120B',    tpm:  8000, quality: 'high'    },
+  { id: 'openai/gpt-oss-20b',                        label: 'GPT OSS 20B',     tpm:  8000, quality: 'medium'  },
+  { id: 'qwen/qwen3-32b',                            label: 'Qwen 3 32B',      tpm:  6000, quality: 'high'    },
+  { id: 'llama-3.1-8b-instant',                      label: 'Llama 3.1 8B',    tpm:  6000, quality: 'medium'  },
+];
+
+// Persists across calls within the same page session
+const rateLimitedUntil: Record<string, number> = {};
+
+function getAvailableModel(): GroqModel | null {
+  const now = Date.now();
+  return GROQ_MODELS.find(m => !rateLimitedUntil[m.id] || rateLimitedUntil[m.id] < now) ?? null;
+}
+
+function markRateLimited(modelId: string, retryAfterSecs = 60) {
+  rateLimitedUntil[modelId] = Date.now() + retryAfterSecs * 1000;
+  console.warn(`[Groq] ${modelId} rate limited for ${retryAfterSecs}s`);
+}
+
 async function callGroq(
   messages: Array<{ role: string; content: string }>,
   options: Record<string, unknown> = {},
+  onStatus?: (msg: string) => void,
 ): Promise<GroqProxyResponse> {
-  const res = await fetch('/api/ai/groq', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      ...options,
-    }),
-  });
-  const data: GroqProxyResponse = await res.json();
-  if (!res.ok) throw new Error(data.error || `Groq proxy error ${res.status}`);
-  return data;
+  for (let attempt = 0; attempt < GROQ_MODELS.length + 1; attempt++) {
+    let model = getAvailableModel();
+
+    if (!model) {
+      // All models are rate-limited — wait 30s then reset and retry once
+      const msg = 'All models busy — waiting 30s…';
+      onStatus?.(msg);
+      console.warn('[Groq] All models rate limited. Waiting 30s then resetting…');
+      await new Promise(r => setTimeout(r, 30_000));
+      Object.keys(rateLimitedUntil).forEach(k => delete rateLimitedUntil[k]);
+      model = getAvailableModel()!;
+    }
+
+    onStatus?.(`Generating with ${model.label}…`);
+    console.log(`[Groq] Trying model: ${model.label}`);
+
+    try {
+      const res = await fetch('/api/ai/groq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: model.id, messages, ...options }),
+      });
+
+      const data = await res.json() as GroqProxyResponse;
+
+      if (res.status === 429) {
+        const retryAfterSecs = data._retryAfter && !isNaN(Number(data._retryAfter))
+          ? Math.min(Math.ceil(Number(data._retryAfter)), 120)
+          : 60;
+        markRateLimited(model.id, retryAfterSecs);
+        onStatus?.(`${model.label} rate limited — trying next model…`);
+        continue;
+      }
+
+      if (!res.ok) {
+        console.error(`[Groq] ${model.label} error ${res.status} — skipping`);
+        markRateLimited(model.id, 30);
+        continue;
+      }
+
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        console.error(`[Groq] ${model.label} returned empty content — skipping`);
+        markRateLimited(model.id, 30);
+        continue;
+      }
+
+      console.log(`[Groq] ✅ Success with ${model.label}`);
+      data._modelUsed = model.label;
+      return data;
+
+    } catch (err) {
+      console.error(`[Groq] ${model.label} fetch failed:`, err);
+      markRateLimited(model.id, 30);
+      continue;
+    }
+  }
+
+  throw new Error('All Groq models failed or are rate limited. Please try again in a minute.');
 }
 
 export const runAgenticReasoning = async (data: DashboardData, goal: string) => {
@@ -404,6 +486,12 @@ H) CONVERSATIONAL COMMENTARY
    Example: "Here's what most guides won't tell you:"`;
 
 
+/** Currency block — injected when currency is provided */
+function currencyBlock(currency?: string): string {
+  if (!currency || currency === 'USD') return '';
+  return `\n⚠️ CURRENCY REQUIREMENT: When mentioning any prices, fees, costs, or monetary values in the article, always use ${currency} as the currency. Format prices naturally in ${currency} (e.g., ${currency} 500, ${currency} 1,200). Do NOT use USD ($) unless the article is specifically about US-based pricing.\n`;
+}
+
 /** Brand Boost block — injected when brandName is provided */
 function brandBoostBlock(brandName?: string): string {
   if (!brandName) return '';
@@ -429,14 +517,14 @@ const langInstruction = (language?: string) =>
     ? `\n⚠️ LANGUAGE REQUIREMENT: Write the ENTIRE article text in ${language}. All headings, paragraphs, and list items must be in ${language}. Keep HTML tags in English only.\n`
     : '';
 
-function buildLocalBusinessPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
+function buildLocalBusinessPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string, currency?: string): string {
   return `You are an expert SEO writer and local market researcher.
 
 TOPIC: "${topic}"
 ARTICLE TYPE: Local business discovery guide.
 ${langInstruction(language)}
 ${GLOBAL_AI_RULES}
-${brandBoostBlock(brandName)}
+${brandBoostBlock(brandName)}${currencyBlock(currency)}
 ${researchBlock ? `━━━ GOOGLE RESEARCH DATA — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Base the article on the businesses listed above. Do NOT invent fake businesses. If a business has "featured: true", list it first.\n` : `━━━ RESEARCH NOTE ━━━\nNo live research data was fetched. Use your training knowledge of commonly known businesses in the city. If unsure of real names, write a section called "Examples of Popular Options".\n`}
 ${competitorBlock ? `${competitorBlock}\n` : ''}
 ━━━ MANDATORY HTML OUTPUT — NO MARKDOWN ALLOWED ━━━
@@ -564,7 +652,7 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildProductPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
+function buildProductPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string, currency?: string): string {
   return `You are an expert product reviewer and SEO content writer with deep knowledge of consumer products, e-commerce, and buying guides.
 ${langInstruction(language)}
 
@@ -572,6 +660,7 @@ TOPIC: "${topic}"
 ARTICLE TYPE: Product review and buying guide.
 
 ${GLOBAL_AI_RULES}
+${currencyBlock(currency)}
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Analyze these real search results to identify actual products. Do NOT invent fake product names.\n` : ''}
 ${competitorBlock ? `${competitorBlock}\n` : ''}
@@ -711,7 +800,7 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildEducationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
+function buildEducationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string, currency?: string): string {
   return `You are an expert educational content writer and SEO specialist who creates comprehensive, beginner-friendly guides.
 ${langInstruction(language)}
 
@@ -719,6 +808,7 @@ TOPIC: "${topic}"
 ARTICLE TYPE: Educational guide — exam prep, certification, academic syllabus, or learning content.
 
 ${GLOBAL_AI_RULES}
+${currencyBlock(currency)}
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Use the snippets above to extract real exam details, dates, syllabus, and eligibility. Do NOT invent information.\n` : ''}
 ${competitorBlock ? `${competitorBlock}\n` : ''}
@@ -879,7 +969,7 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildInformationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
+function buildInformationalPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string, currency?: string): string {
   return `You are an expert informational content writer and SEO specialist who creates authoritative, well-researched articles.
 ${langInstruction(language)}
 
@@ -887,6 +977,7 @@ TOPIC: "${topic}"
 ARTICLE TYPE: Informational / educational article covering concepts, benefits, tips, and evidence.
 
 ${GLOBAL_AI_RULES}
+${currencyBlock(currency)}
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n\nIMPORTANT: Use the snippets above to ground your article in real information. Reference data and insights from the research.\n` : ''}
 ${competitorBlock ? `${competitorBlock}\n` : ''}
@@ -1011,7 +1102,7 @@ ${SEO_RULES}
 ${JSON_SCHEMA}`;
 }
 
-function buildDefaultPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string): string {
+function buildDefaultPrompt(topic: string, brandName?: string, researchBlock?: string, competitorBlock?: string, language?: string, currency?: string): string {
   return `You are an expert SEO content writer and researcher. Analyze the topic and automatically determine the best article structure.
 ${langInstruction(language)}
 
@@ -1019,6 +1110,7 @@ TOPIC: "${topic}"
 ARTICLE TYPE: Auto-detect and write the best-fit article (listicle, guide, review, comparison, how-to, etc.)
 
 ${GLOBAL_AI_RULES}
+${currencyBlock(currency)}
 ${brandBoostBlock(brandName)}
 ${researchBlock ? `━━━ GOOGLE SEARCH RESEARCH — Use this as your factual base ━━━\n${researchBlock}\n` : ''}
 ${competitorBlock ? `${competitorBlock}\n` : ''}
@@ -1113,13 +1205,14 @@ const buildBlogPrompt = (
   researchBlock?: string,
   competitorBlock?: string,
   language?: string,
+  currency?: string,
 ): string => {
   switch (category) {
-    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName, researchBlock, competitorBlock, language);
-    case 'products':         return buildProductPrompt(topic, brandName, researchBlock, competitorBlock, language);
-    case 'educational':      return buildEducationalPrompt(topic, brandName, researchBlock, competitorBlock, language);
-    case 'informational':    return buildInformationalPrompt(topic, brandName, researchBlock, competitorBlock, language);
-    default:                 return buildDefaultPrompt(topic, brandName, researchBlock, competitorBlock, language);
+    case 'local_business':   return buildLocalBusinessPrompt(topic, brandName, researchBlock, competitorBlock, language, currency);
+    case 'products':         return buildProductPrompt(topic, brandName, researchBlock, competitorBlock, language, currency);
+    case 'educational':      return buildEducationalPrompt(topic, brandName, researchBlock, competitorBlock, language, currency);
+    case 'informational':    return buildInformationalPrompt(topic, brandName, researchBlock, competitorBlock, language, currency);
+    default:                 return buildDefaultPrompt(topic, brandName, researchBlock, competitorBlock, language, currency);
   }
 };
 
@@ -1167,11 +1260,11 @@ async function fetchCompetitorBlock(topic: string): Promise<string> {
 
 // ── Deep research prompt (no-category path — Groq only, no SerpAPI) ───────────
 
-function buildDeepResearchPrompt(topic: string, brandName?: string, language?: string): string {
+function buildDeepResearchPrompt(topic: string, brandName?: string, language?: string, currency?: string): string {
   return `You are a subject matter expert and professional SEO content writer with verified knowledge across all industries, certifications, and academic topics.
 
 TOPIC: "${topic}"
-${langInstruction(language)}${brandBoostBlock(brandName)}
+${langInstruction(language)}${brandBoostBlock(brandName)}${currencyBlock(currency)}
 ${GLOBAL_AI_RULES}
 
 ━━━ DEEP RESEARCH INSTRUCTIONS ━━━
@@ -1385,36 +1478,105 @@ export const runEditorAction = async (
 // ── Humanizer ─────────────────────────────────────────────────────────────────
 
 /**
- * Rewrites the full article to sound natural and human-written.
- * Reduces AI-typical patterns, improves sentence variation, maintains SEO.
+ * Section-by-section humanizer.
+ * Splits the HTML into individual block elements, humanizes each prose block
+ * independently, then rejoins — prevents the model from losing whole sections.
  */
-export const humanizeContent = async (html: string): Promise<string> => {
-  const prompt = `You are an expert human content editor and professional writer.
 
-Your task: Rewrite the following article so it sounds completely natural, conversational, and human-written — not AI-generated.
+const HUMANIZE_SECTION_SYSTEM = `You are rewriting ONE paragraph or list from an HTML article to sound human-written.
 
-Current HTML article:
-${html.slice(0, 7000)}
+STRICT RULES:
+- Keep EVERY fact, number, name, price 100% identical
+- Do NOT add new information
+- Do NOT remove any information
+- Output ONLY the rewritten HTML block, nothing else
+- Preserve all HTML tags exactly (p, ul, li, ol, strong, em, table, td, th, etc.)
+- Same approximate length as input
 
-Apply ALL of these rewriting rules:
-1. SENTENCE VARIATION: Mix very short sentences (3–6 words) with longer complex ones. Never write 3 consecutive sentences of the same length.
-2. NATURAL TRANSITIONS: Replace formal AI transitions (Furthermore, Moreover, In conclusion, It is important to note, Having said that) with natural ones (But, So, Here's the thing, That said, What's more).
-3. RHETORICAL QUESTIONS: Add 2–3 rhetorical questions to engage the reader. Example: "But does that really matter here?"
-4. ACTIVE VOICE: Convert passive constructions to active voice throughout.
-5. SPECIFICITY: Replace vague statements with specific examples, numbers, and concrete details.
-6. PARAGRAPH VARIETY: Mix single-sentence paragraphs with multi-sentence blocks.
-7. SEO PRESERVATION: Keep ALL keywords, headings, and factual content intact.
-8. HTML STRUCTURE: Return valid HTML only. Preserve all tags (h1, h2, h3, p, ul, li, table, strong, em).
-9. NO EMOJIS. No markdown. Pure HTML output.
+WORD REPLACEMENTS — apply where present:
+"features" → "packs" / "comes with" / "ships with"
+"performance" → "grunt" / "muscle" / "speed"
+"however" → "that said" / remove it
+"purchase" → "buy" / "grab" / "pick up"
+"significant" → "big" / "real" / "noticeable"
+"utilize" → "use" / "lean on"
+"Furthermore" → "On top of that" / remove
+"provides" → "gives you" / "hands you"
+"optimal" → "best" / "sweet spot"
+"currently" → "right now" / "as of today"
+"available" → "out there" / "on sale"
+"excellent" → "solid" / "cracking" / "pretty great"
+"comprehensive" → "full" / "complete"
+"demonstrates" → "shows" / "proves"
 
-Return ONLY the rewritten HTML — no explanation, no preamble.`;
+SENTENCE RULES:
+- Vary length — mix very short sentences with longer ones
+- You may add ONE filler word max: "tbh", "honestly", "basically", "actually"
+- Never use: Furthermore, Moreover, Additionally, It is worth noting, It is important to note`;
 
-  const response = await callGroq(
-    [{ role: 'user', content: prompt }],
-    { max_tokens: 8192 },
-  );
-  const raw = response.choices[0]?.message?.content || '';
-  return cleanArticleHtml(raw.trim());
+/** Split HTML into top-level block elements for per-block processing */
+function splitHtmlIntoBlocks(html: string): string[] {
+  // Split BEFORE each opening block tag, keeping the tag with its content
+  return html
+    .split(/(?=<(?:h[1-6]|p|ul|ol|table)\b)/i)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/** Count words in an HTML string (strips tags first) */
+function htmlWordCount(html: string): number {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).length;
+}
+
+export const humanizeContent = async (
+  html: string,
+  onStatus?: (msg: string) => void,
+): Promise<string> => {
+  const content = html.slice(0, 12000);
+  const blocks = splitHtmlIntoBlocks(content);
+  const result: string[] = [];
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+
+    // Skip headings and very short blocks — keep exactly as-is
+    if (/^<h[1-6]\b/i.test(block) || htmlWordCount(block) < 8) {
+      result.push(block);
+      continue;
+    }
+
+    onStatus?.(`Humanizing section ${i + 1} of ${blocks.length}…`);
+
+    try {
+      const response = await callGroq(
+        [
+          { role: 'system', content: HUMANIZE_SECTION_SYSTEM },
+          { role: 'user', content: `Rewrite this paragraph only:\n\n${block}` },
+        ],
+        { max_tokens: 1024 },
+        onStatus,
+      );
+
+      const rewritten = (response.choices[0]?.message?.content || '').trim();
+
+      // If output lost more than 30% of words, the model removed content — keep original
+      if (rewritten && htmlWordCount(rewritten) >= htmlWordCount(block) * 0.7) {
+        result.push(rewritten);
+      } else {
+        console.warn(`[Humanizer] Section ${i + 1} too short, keeping original`);
+        result.push(block);
+      }
+    } catch {
+      result.push(block);
+    }
+
+    // Small delay between sections to avoid rate limiting
+    if (i < blocks.length - 1) {
+      await new Promise(res => setTimeout(res, 500));
+    }
+  }
+
+  return cleanArticleHtml(result.join('\n'));
 };
 
 // ── Quick text-selection actions ──────────────────────────────────────────────
@@ -1467,19 +1629,23 @@ export const generateSeoBlogArticle = async (
   brandName?: string,
   category?: string | null,
   language?: string,
+  currency?: string,
+  onStatus?: (msg: string) => void,
 ): Promise<SeoArticleResult> => {
 
   // ── PATH A: No category selected → Groq deep research only (no SerpAPI) ──
   if (!category) {
-    const prompt = buildDeepResearchPrompt(topic, brandName, language);
+    const prompt = buildDeepResearchPrompt(topic, brandName, language, currency);
     try {
       const response = await callGroq(
         [{ role: 'user', content: prompt }],
         { response_format: { type: 'json_object' }, max_tokens: 12000 },
+        onStatus,
       );
       const text = response.choices[0]?.message?.content || '';
       const result = JSON.parse(text) as SeoArticleResult;
       result.article = cleanArticleHtml(result.article);
+      result.modelUsed = response._modelUsed;
       return result;
     } catch (error) {
       console.error('Deep research generation failed:', error);
@@ -1493,16 +1659,18 @@ export const generateSeoBlogArticle = async (
     fetchCompetitorBlock(topic),
   ]);
 
-  const prompt = buildBlogPrompt(topic, category, brandName, researchBlock, competitorBlock, language);
+  const prompt = buildBlogPrompt(topic, category, brandName, researchBlock, competitorBlock, language, currency);
 
   try {
     const response = await callGroq(
       [{ role: 'user', content: prompt }],
       { response_format: { type: 'json_object' }, max_tokens: 12000 },
+      onStatus,
     );
     const text = response.choices[0]?.message?.content || '';
     const result = JSON.parse(text) as SeoArticleResult;
     result.article = cleanArticleHtml(result.article);
+    result.modelUsed = response._modelUsed;
     return result;
   } catch (error) {
     console.error('SEO Blog generation failed:', error);
