@@ -345,12 +345,12 @@ const GLOBAL_AI_RULES = `
 5. TARGET LENGTH: minimum 1200 words (target 1200–1500). Never go under 1200.
    FINAL VALIDATION — before returning JSON, verify:
    ✓ Word count ≥ 1200
+   ✓ TLDR Summary appears immediately after the H1 title (before Direct Answer and body sections)
    ✓ At least 5 <h2> headings
    ✓ At least 3 <h3> subsections
    ✓ At least 3 <ul> or <ol> lists
    ✓ At least 1 internal contextual reference (comparison or related topic mention)
    ✓ At least 1 external reference (named source, publication, or official body)
-   ✓ TLDR section present
    ✓ Conclusion section present
    ✓ Brand section present (if brandName was provided)
 
@@ -449,10 +449,20 @@ Allowed tags: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <hr> <table> <thea
 STEP 1 — TITLE
 <h1><strong>[Question-style title — e.g. "What Are the Best [Topic] in [City] in 2026?"]</strong></h1>
 
-STEP 2 — DIRECT ANSWER
+STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
+<h2><strong>TLDR Summary</strong></h2>
+<ul>
+  <li>[Most important takeaway about this market]</li>
+  <li>[Top recommended option and why]</li>
+  <li>[Key pricing insight]</li>
+  <li>[Most important selection factor]</li>
+  <li>[Final actionable tip]</li>
+</ul>
+
+STEP 3 — DIRECT ANSWER
 <p><strong>Direct Answer:</strong> [2–3 sentence factual answer with main keyword. Optimized for AI featured snippets.]</p>
 
-STEP 3 — TABLE OF CONTENTS
+STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
 <ul>
   <li>Why [City] Is a Hub for [Topic]</li>
@@ -460,11 +470,10 @@ STEP 3 — TABLE OF CONTENTS
   <li>Detailed Comparison Table</li>
   <li>How to Choose the Right Provider</li>
   <li>What Are the Key Questions to Ask?</li>
-  <li>TLDR Summary</li>
   <li>Conclusion</li>
 </ul>
 
-STEP 4 — BODY SECTIONS (5–7 question-based H2 sections, each following this pattern):
+STEP 5 — BODY SECTIONS (5–7 question-based H2 sections, each following this pattern):
 
 <h2><strong>Why Is [City] a Great Place for [Topic]?</strong></h2>
 <p><strong>Short Answer:</strong> [1–2 sentence direct answer about the city's market for this topic.]</p>
@@ -542,16 +551,6 @@ ${brandName ? `<h3><strong>About ${brandName}</strong></h3>\n<p>[2–3 sentences
   <li>[Question 5 with brief explanation]</li>
 </ul>
 
-STEP 5 — TLDR SUMMARY
-<h2><strong>TLDR Summary</strong></h2>
-<ul>
-  <li>[Most important takeaway about this market]</li>
-  <li>[Top recommended option and why]</li>
-  <li>[Key pricing insight]</li>
-  <li>[Most important selection factor]</li>
-  <li>[Final actionable tip]</li>
-</ul>
-
 STEP 6 — CONCLUSION
 <h2><strong>Conclusion</strong></h2>
 <p>[3–4 sentences summarizing the guide. Include main keyword. Give clear next steps. ${brandName ? `Recommend ${brandName} for readers looking for a trusted option.` : ''}]</p>
@@ -586,10 +585,20 @@ Allowed tags: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <hr> <table> <thea
 STEP 1 — TITLE
 <h1><strong>[Question-style title — e.g. "What Are the Best [Topic] to Buy in 2026?"]</strong></h1>
 
-STEP 2 — DIRECT ANSWER
+STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
+<h2><strong>TLDR Summary</strong></h2>
+<ul>
+  <li>[Best overall pick and why]</li>
+  <li>[Best budget pick and why]</li>
+  <li>[Most important buying factor]</li>
+  <li>[Key price insight]</li>
+  <li>[Final recommendation tip]</li>
+</ul>
+
+STEP 3 — DIRECT ANSWER
 <p><strong>Direct Answer:</strong> [2–3 sentence factual answer naming top 2–3 products and what makes them stand out. Contains main keyword.]</p>
 
-STEP 3 — TABLE OF CONTENTS
+STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
 <ul>
   <li>Why [Topic] Matters in 2026</li>
@@ -597,11 +606,10 @@ STEP 3 — TABLE OF CONTENTS
   <li>Comparison Table</li>
   <li>What Should You Look for Before Buying?</li>
   <li>Which Product Is Right for You?</li>
-  <li>TLDR Summary</li>
   <li>Conclusion</li>
 </ul>
 
-STEP 4 — BODY SECTIONS (5–8 question-based H2 sections):
+STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 
 <h2><strong>Why Does [Topic Category] Matter in 2026?</strong></h2>
 <p><strong>Short Answer:</strong> [1–2 sentence direct answer about why this product category is important today.]</p>
@@ -690,16 +698,6 @@ ${brandName ? `<h3>${brandName}</h3>
   <li><strong>Best for Beginners:</strong> [Product name + reason]</li>
 </ul>
 
-STEP 5 — TLDR SUMMARY
-<h2><strong>TLDR Summary</strong></h2>
-<ul>
-  <li>[Best overall pick and why]</li>
-  <li>[Best budget pick and why]</li>
-  <li>[Most important buying factor]</li>
-  <li>[Key price insight]</li>
-  <li>[Final recommendation tip]</li>
-</ul>
-
 STEP 6 — CONCLUSION
 <h2><strong>Conclusion</strong></h2>
 <p>[3–4 sentences summarizing the guide. Include main keyword. Clear next steps for the reader. ${brandName ? `Recommend ${brandName} as a top choice.` : ''}]</p>
@@ -739,10 +737,20 @@ Allowed tags: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <hr> <a>
 STEP 1 — TITLE
 <h1><strong>[Question-style title — e.g. "What Is the Complete [Topic] Syllabus and Exam Pattern for 2026?"]</strong></h1>
 
-STEP 2 — DIRECT ANSWER
+STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
+<h2><strong>TLDR Summary</strong></h2>
+<ul>
+  <li>[What [Topic] is and its governing body]</li>
+  <li>[Number of parts/subjects — verified fact]</li>
+  <li>[Eligibility requirement]</li>
+  <li>[Most important preparation tip]</li>
+  <li>[Career benefit or salary insight]</li>
+</ul>
+
+STEP 3 — DIRECT ANSWER
 <p><strong>Direct Answer:</strong> [2–3 sentence factual answer with verified details about the exam/topic. Contains main keyword. AI engines read this for featured snippets.]</p>
 
-STEP 3 — TABLE OF CONTENTS
+STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
 <ul>
   <li>What Is [Topic] and Who Should Pursue It?</li>
@@ -751,11 +759,10 @@ STEP 3 — TABLE OF CONTENTS
   <li>What Is the Exam Pattern and Marking Scheme?</li>
   <li>How Should You Prepare for [Topic]?</li>
   <li>What Are the Career Benefits?</li>
-  <li>TLDR Summary</li>
   <li>Conclusion</li>
 </ul>
 
-STEP 4 — BODY SECTIONS (5–8 question-based H2 sections):
+STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 
 <h2><strong>What Is [Topic] and Who Should Pursue It?</strong></h2>
 <p><strong>Short Answer:</strong> [1–2 sentence factual answer defining the topic and its target audience.]</p>
@@ -859,16 +866,6 @@ ${brandName ? `<h2><strong>How Does ${brandName} Help with [Topic] Preparation?<
   <li>[Feature/offering 3]</li>
 </ul>` : ''}
 
-STEP 5 — TLDR SUMMARY
-<h2><strong>TLDR Summary</strong></h2>
-<ul>
-  <li>[What [Topic] is and its governing body]</li>
-  <li>[Number of parts/subjects — verified fact]</li>
-  <li>[Eligibility requirement]</li>
-  <li>[Most important preparation tip]</li>
-  <li>[Career benefit or salary insight]</li>
-</ul>
-
 STEP 6 — CONCLUSION
 <h2><strong>Conclusion</strong></h2>
 <p>[3–4 sentences summarizing the guide. Include main keyword. Encourage the reader with clear next steps. ${brandName ? `Mention ${brandName} as a preparation resource.` : ''}]</p>
@@ -903,10 +900,20 @@ Allowed tags: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <hr> <a>
 STEP 1 — TITLE
 <h1><strong>[Question-style title — e.g. "What Is [Topic] and Why Does It Matter in 2026?"]</strong></h1>
 
-STEP 2 — DIRECT ANSWER
+STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
+<h2><strong>TLDR Summary</strong></h2>
+<ul>
+  <li>[Core definition of [Topic] in one clear sentence]</li>
+  <li>[Top benefit with brief reason]</li>
+  <li>[Key research or expert finding]</li>
+  <li>[Most actionable practical tip]</li>
+  <li>[Final motivational or next-step insight]</li>
+</ul>
+
+STEP 3 — DIRECT ANSWER
 <p><strong>Direct Answer:</strong> [2–3 sentence factual answer defining the topic and its primary importance. Contains main keyword.]</p>
 
-STEP 3 — TABLE OF CONTENTS
+STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
 <ul>
   <li>What Is [Topic]?</li>
@@ -914,11 +921,10 @@ STEP 3 — TABLE OF CONTENTS
   <li>What Does the Research Say?</li>
   <li>What Are the Practical Applications?</li>
   <li>What Are Common Myths?</li>
-  <li>TLDR Summary</li>
   <li>Conclusion</li>
 </ul>
 
-STEP 4 — BODY SECTIONS (5–8 question-based H2 sections):
+STEP 5 — BODY SECTIONS (5–8 question-based H2 sections):
 
 <h2><strong>What Is [Topic] and Why Does It Matter?</strong></h2>
 <p><strong>Short Answer:</strong> [1–2 sentence direct definition with context.]</p>
@@ -992,16 +998,6 @@ ${brandName ? `<h2><strong>How Does ${brandName} Help with [Topic]?</strong></h2
   <li>[Relevant service or feature 3]</li>
 </ul>` : ''}
 
-STEP 5 — TLDR SUMMARY
-<h2><strong>TLDR Summary</strong></h2>
-<ul>
-  <li>[Core definition of [Topic] in one clear sentence]</li>
-  <li>[Top benefit with brief reason]</li>
-  <li>[Key research or expert finding]</li>
-  <li>[Most actionable practical tip]</li>
-  <li>[Final motivational or next-step insight]</li>
-</ul>
-
 STEP 6 — CONCLUSION
 <h2><strong>Conclusion</strong></h2>
 <p>[3–4 sentences summarizing the article. Include main keyword. Motivational closing. Clear call to action or next steps. ${brandName ? `Recommend ${brandName} as a resource.` : ''}]</p>
@@ -1042,18 +1038,27 @@ Allowed tags: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <hr> <table> <thea
 STEP 1 — TITLE
 <h1><strong>[Question-style title most relevant to the topic]</strong></h1>
 
-STEP 2 — DIRECT ANSWER
+STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
+<h2><strong>TLDR Summary</strong></h2>
+<ul>
+  <li>[Most important takeaway]</li>
+  <li>[Second key insight]</li>
+  <li>[Third key point]</li>
+  <li>[Fourth actionable tip]</li>
+  <li>[Final recommendation or next step]</li>
+</ul>
+
+STEP 3 — DIRECT ANSWER
 <p><strong>Direct Answer:</strong> [2–3 sentence factual answer. Contains main keyword. Optimized for AI featured snippets.]</p>
 
-STEP 3 — TABLE OF CONTENTS
+STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
 <ul>
   <li>[5–7 section titles matching your chosen structure]</li>
-  <li>TLDR Summary</li>
   <li>Conclusion</li>
 </ul>
 
-STEP 4 — BODY SECTIONS
+STEP 5 — BODY SECTIONS
 Choose the structure that best fits the topic, then write 5–7 question-based H2 sections.
 Each section MUST follow this pattern:
 
@@ -1085,16 +1090,6 @@ ${brandName ? `BRAND SECTION (required):
   <li>[Strength or feature 2]</li>
   <li>[Strength or feature 3]</li>
 </ul>` : ''}
-
-STEP 5 — TLDR SUMMARY
-<h2><strong>TLDR Summary</strong></h2>
-<ul>
-  <li>[Most important takeaway]</li>
-  <li>[Second key insight]</li>
-  <li>[Third key point]</li>
-  <li>[Fourth actionable tip]</li>
-  <li>[Final recommendation or next step]</li>
-</ul>
 
 STEP 6 — CONCLUSION
 <h2><strong>Conclusion</strong></h2>
@@ -1199,10 +1194,20 @@ Allowed tags: <h1> <h2> <h3> <p> <ul> <ol> <li> <strong> <em> <hr> <a>
 STEP 1 — TITLE
 <h1><strong>[Question-style title containing main keyword — e.g. "What Is the CMA Syllabus for 2026?"]</strong></h1>
 
-STEP 2 — DIRECT ANSWER (featured snippet target)
+STEP 2 — TLDR SUMMARY (place immediately after H1, before everything else)
+<h2><strong>TLDR Summary</strong></h2>
+<ul>
+  <li>[Key takeaway 1 — most important fact]</li>
+  <li>[Key takeaway 2]</li>
+  <li>[Key takeaway 3]</li>
+  <li>[Key takeaway 4]</li>
+  <li>[Key takeaway 5]</li>
+</ul>
+
+STEP 3 — DIRECT ANSWER (featured snippet target)
 <p><strong>Direct Answer:</strong> [2–3 sentence factual answer. Must contain main keyword. This is what AI engines read for snippets.]</p>
 
-STEP 3 — TABLE OF CONTENTS
+STEP 4 — TABLE OF CONTENTS
 <h2><strong>Table of Contents</strong></h2>
 <ul>
   <li>[Section 1 title]</li>
@@ -1210,11 +1215,10 @@ STEP 3 — TABLE OF CONTENTS
   <li>[Section 3 title]</li>
   <li>[Section 4 title]</li>
   <li>[Section 5 title]</li>
-  <li>TLDR Summary</li>
   <li>Conclusion</li>
 </ul>
 
-STEP 4 — BODY SECTIONS (minimum 5 H2 sections, each with H3 subsections)
+STEP 5 — BODY SECTIONS (minimum 5 H2 sections, each with H3 subsections)
 Each H2 section MUST follow this exact pattern:
 
 <h2><strong>[Question heading ending with ?]</strong></h2>
@@ -1236,19 +1240,9 @@ REQUIRED sections for exam/certification topics (adapt headings as questions):
 • How Should You Prepare for [Topic]?
 • What Are the Career Benefits After Completing [Topic]?
 
-STEP 5 — BRAND SECTION (only if brand name provided)
+STEP 6 — BRAND SECTION (only if brand name provided)
 <h2><strong>How ${brandName ? brandName : '[Brand Name]'} Helps You with [Topic]</strong></h2>
 <p>[Explain naturally how the brand helps users prepare for or benefit from the topic. 2–3 sentences.]</p>
-
-STEP 6 — TLDR SUMMARY
-<h2><strong>TLDR Summary</strong></h2>
-<ul>
-  <li>[Key takeaway 1 — most important fact]</li>
-  <li>[Key takeaway 2]</li>
-  <li>[Key takeaway 3]</li>
-  <li>[Key takeaway 4]</li>
-  <li>[Key takeaway 5]</li>
-</ul>
 
 STEP 7 — CONCLUSION
 <h2><strong>Conclusion</strong></h2>
