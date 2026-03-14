@@ -283,6 +283,8 @@ export const runSeoAudit = async (domain: string): Promise<{ analysis: string; s
 
 /** Shared JSON output schema appended to every prompt template */
 const JSON_SCHEMA = `
+⚠️ WORD COUNT REQUIREMENT: The "article" field MUST contain a minimum of 1200 words of actual written text (not counting HTML tags). Count carefully before returning. If your article is under 1200 words, expand each section before submitting.
+
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "title": "Question-style H1 title (e.g. 'What Are the Best X in 2026?')",
@@ -1479,7 +1481,7 @@ export const generateSeoBlogArticle = async (
     try {
       const response = await callGroq(
         [{ role: 'user', content: prompt }],
-        { response_format: { type: 'json_object' }, max_tokens: 8192 },
+        { response_format: { type: 'json_object' }, max_tokens: 12000 },
       );
       const text = response.choices[0]?.message?.content || '';
       const result = JSON.parse(text) as SeoArticleResult;
@@ -1502,7 +1504,7 @@ export const generateSeoBlogArticle = async (
   try {
     const response = await callGroq(
       [{ role: 'user', content: prompt }],
-      { response_format: { type: 'json_object' }, max_tokens: 8192 },
+      { response_format: { type: 'json_object' }, max_tokens: 12000 },
     );
     const text = response.choices[0]?.message?.content || '';
     const result = JSON.parse(text) as SeoArticleResult;
