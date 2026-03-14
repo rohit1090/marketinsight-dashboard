@@ -1264,13 +1264,9 @@ const ContentWriterPanel: React.FC = () => {
                   [&_hr]:my-6 [&_hr]:border-slate-200
                   [&_mark]:bg-yellow-200 [&_mark]:text-yellow-900 [&_mark]:rounded [&_mark]:px-0.5
                   [&_a]:text-indigo-600 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-indigo-400 [&_a]:cursor-pointer [&_a]:font-medium hover:[&_a]:text-indigo-800 hover:[&_a]:decoration-indigo-600
-                  [&_table]:w-full [&_table]:border-collapse [&_table]:my-6 [&_table]:rounded-xl [&_table]:overflow-hidden [&_table]:shadow-sm [&_table]:border [&_table]:border-slate-200
-                  [&_thead]:bg-gradient-to-r [&_thead]:from-indigo-600 [&_thead]:to-violet-600
-                  [&_thead_th]:text-white [&_thead_th]:font-semibold [&_thead_th]:text-[13px] [&_thead_th]:px-4 [&_thead_th]:py-3 [&_thead_th]:text-left [&_thead_th]:tracking-wide
-                  [&_tbody_tr]:border-b [&_tbody_tr]:border-slate-100 [&_tbody_tr:last-child]:border-0
-                  [&_tbody_tr:nth-child(even)]:bg-slate-50 [&_tbody_tr:nth-child(odd)]:bg-white
-                  [&_tbody_tr:hover]:bg-indigo-50
-                  [&_tbody_td]:px-4 [&_tbody_td]:py-3 [&_tbody_td]:text-[13px] [&_tbody_td]:text-slate-700 [&_tbody_td]:align-top"
+                  [&_table]:w-full [&_table]:border-collapse [&_table]:my-6
+                  [&_th]:border [&_th]:border-slate-300 [&_th]:px-4 [&_th]:py-2.5 [&_th]:text-left [&_th]:text-[13px] [&_th]:font-semibold [&_th]:text-slate-700 [&_th]:bg-slate-50
+                  [&_td]:border [&_td]:border-slate-300 [&_td]:px-4 [&_td]:py-2.5 [&_td]:text-[13px] [&_td]:text-slate-700 [&_td]:align-top"
               />
 
               {/* Link hover preview */}
