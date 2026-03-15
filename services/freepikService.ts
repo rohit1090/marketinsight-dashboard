@@ -5,12 +5,22 @@
  *
  * Flow:
  *  1. generateImagePrompt()  — uses Groq to craft an image prompt from article content
- *  2. generateBlogImage()    — POST task → poll → return image URL
+ *  2. createImageTask()      — POST to Freepik Mystic, returns task_id
+ *  3. pollImageTask()        — GET /v1/ai/mystic/{task_id} until COMPLETED
+ *  4. generateBlogImage()    — orchestrates 1–3, exposes progress callback
  */
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+export type FreepikStyle =
+  | 'realistic'
+  | 'digital_art'
+  | 'minimalist'
+  | 'cinematic'
+  | 'infographic';
 
 // ─── Prompt generator ─────────────────────────────────────────────────────────
 
-/** Strip HTML tags and truncate for prompt use */
 function extractText(html: string, maxChars = 2000): string {
   return html
     .replace(/<[^>]+>/g, ' ')
@@ -20,7 +30,7 @@ function extractText(html: string, maxChars = 2000): string {
 }
 
 /**
- * Uses Groq to generate a focused, visual image prompt from the article content.
+ * Uses Groq to generate a focused, visual image prompt from article content.
  * Falls back to a generic prompt on any error.
  */
 export async function generateImagePrompt(articleHtml: string): Promise<string> {
@@ -57,57 +67,122 @@ export async function generateImagePrompt(articleHtml: string): Promise<string> 
   }
 }
 
-// ─── Image generation ──────────────────────────────────────────────────────────
+// ─── Task creation ─────────────────────────────────────────────────────────────
 
-export type FreepikStyle =
-  | 'photo-realism'
-  | 'digital-art'
-  | 'anime'
-  | 'painting'
-  | 'sketch'
-  | 'watercolor'
-  | '3d';
+const STYLE_MAP: Record<string, string> = {
+  digital_art: 'digital-art',
+  minimalist: 'minimalist',
+  cinematic: 'cinematic',
+  infographic: 'infographic',
+};
+
+export async function createImageTask(
+  prompt: string,
+  style?: FreepikStyle,
+): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: any = {
+    prompt,
+    resolution: '2k',
+    aspect_ratio: 'widescreen_16_9',
+    model: 'realism',
+    creative_detailing: 50,
+    engine: 'automatic',
+    fixed_generation: false,
+    filter_nsfw: true,
+  };
+
+  if (style && style !== 'realistic') {
+    body.styling = {
+      styles: [
+        {
+          name: STYLE_MAP[style] || style,
+          strength: 100,
+        },
+      ],
+    };
+  }
+
+  const response = await fetch('/api/freepik/v1/ai/mystic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.message || `Freepik API error ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (!data.data?.task_id) {
+    throw new Error('No task_id returned from Freepik');
+  }
+
+  console.log('[Freepik] Task created:', data.data.task_id);
+  return data.data.task_id as string;
+}
+
+// ─── Polling ───────────────────────────────────────────────────────────────────
+
+export async function pollImageTask(taskId: string): Promise<string> {
+  const MAX_POLLS = 30;
+
+  for (let attempt = 0; attempt < MAX_POLLS; attempt++) {
+    await new Promise(r => setTimeout(r, 2000));
+
+    const pollRes = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`);
+    if (!pollRes.ok) continue;
+
+    const pollData = await pollRes.json();
+    const status: string = pollData.data?.status ?? '';
+
+    if (status === 'COMPLETED') {
+      let url: string = pollData.data?.generated?.[0]?.url ?? '';
+
+      // If generated array is empty, wait 2 s and retry once
+      if (!url) {
+        await new Promise(r => setTimeout(r, 2000));
+        const retry = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`);
+        if (retry.ok) {
+          const retryData = await retry.json();
+          url = retryData.data?.generated?.[0]?.url ?? '';
+        }
+      }
+
+      if (!url) throw new Error('No image URL in Freepik response');
+      return url;
+    }
+
+    if (status === 'FAILED' || status === 'ERROR') {
+      throw new Error('Freepik image generation failed');
+    }
+  }
+
+  throw new Error('Freepik image generation timed out after 60 s');
+}
+
+// ─── Main orchestrator ─────────────────────────────────────────────────────────
 
 /**
- * Creates a Freepik Mystic task and polls until completion.
- * Returns the URL of the generated image.
+ * Generates a blog hero image end-to-end.
  *
- * @param prompt     Image description
- * @param style      Freepik style preset
- * @param onProgress Callback with 0–100 progress values
+ * @param prompt      Image description
+ * @param style       Freepik style preset (omit or 'realistic' for no style filter)
+ * @param onProgress  Callback with 0–100 progress values
  */
 export async function generateBlogImage(
   prompt: string,
-  style: FreepikStyle = 'photo-realism',
+  style?: FreepikStyle,
   onProgress?: (progress: number) => void,
 ): Promise<string> {
   onProgress?.(5);
 
-  // Step 1 — create task
-  const createRes = await fetch('/api/freepik/v1/ai/mystic', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      image: { size: 'square_1_1' },
-      styling: { style },
-      num_images: 1,
-    }),
-  });
-
-  if (!createRes.ok) {
-    const err = await createRes.json().catch(() => ({}));
-    throw new Error(err?.message || `Freepik API error ${createRes.status}`);
-  }
-
-  const createData = await createRes.json();
-  // Freepik returns { data: { _id: "...", status: "PENDING", ... } }
-  const taskId: string = createData.data?._id ?? createData.data?.task_id ?? createData._id;
-  if (!taskId) throw new Error('No task ID returned by Freepik');
+  const taskId = await createImageTask(prompt, style);
 
   onProgress?.(15);
 
-  // Step 2 — poll every 2 s, up to 60 s
   const MAX_POLLS = 30;
   for (let attempt = 0; attempt < MAX_POLLS; attempt++) {
     await new Promise(r => setTimeout(r, 2000));
@@ -116,14 +191,22 @@ export async function generateBlogImage(
     if (!pollRes.ok) continue;
 
     const pollData = await pollRes.json();
-    const status: string = pollData.data?.status ?? pollData.status ?? '';
+    const status: string = pollData.data?.status ?? '';
 
     if (status === 'COMPLETED') {
       onProgress?.(100);
-      const url: string =
-        pollData.data?.generated?.[0]?.url ??
-        pollData.data?.images?.[0]?.url ??
-        pollData.generated?.[0]?.url;
+      let url: string = pollData.data?.generated?.[0]?.url ?? '';
+
+      // If generated array is empty on first COMPLETED response, retry once
+      if (!url) {
+        await new Promise(r => setTimeout(r, 2000));
+        const retry = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`);
+        if (retry.ok) {
+          const retryData = await retry.json();
+          url = retryData.data?.generated?.[0]?.url ?? '';
+        }
+      }
+
       if (!url) throw new Error('No image URL in Freepik response');
       return url;
     }

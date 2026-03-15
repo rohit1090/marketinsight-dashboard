@@ -402,7 +402,7 @@ const ContentWriterPanel: React.FC = () => {
   // ── Freepik AI Image ──────────────────────────────────────────────────────
   const [showImagePanel, setShowImagePanel] = useState(false);
   const [imageMode, setImageMode] = useState<'auto' | 'custom'>('auto');
-  const [imageStyle, setImageStyle] = useState<FreepikStyle>('photo-realism');
+  const [imageStyle, setImageStyle] = useState<FreepikStyle>('realistic');
   const [customPrompt, setCustomPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
@@ -1950,13 +1950,11 @@ const ContentWriterPanel: React.FC = () => {
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Style</p>
                 <div className="grid grid-cols-4 gap-2 mb-5">
                   {([
-                    { value: 'photo-realism', label: 'Photo' },
-                    { value: 'digital-art',   label: 'Digital' },
-                    { value: 'painting',      label: 'Painting' },
-                    { value: 'watercolor',    label: 'Watercolor' },
-                    { value: 'sketch',        label: 'Sketch' },
-                    { value: 'anime',         label: 'Anime' },
-                    { value: '3d',            label: '3D' },
+                    { value: 'realistic',    label: 'Realistic' },
+                    { value: 'digital_art',  label: 'Digital Art' },
+                    { value: 'cinematic',    label: 'Cinematic' },
+                    { value: 'minimalist',   label: 'Minimalist' },
+                    { value: 'infographic',  label: 'Infographic' },
                   ] as { value: FreepikStyle; label: string }[]).map(s => (
                     <button
                       key={s.value}
