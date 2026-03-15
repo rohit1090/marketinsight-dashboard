@@ -802,7 +802,14 @@ const ContentWriterPanel: React.FC = () => {
     }
   }, [contextEditInstruction, selectedArticle, saveSnapshot, handleEditorInput, showToast]);
 
-  /** Generate a blog hero image via Freepik Mystic */
+  /** Strip any previously injected featured image block from editor HTML */
+  const stripFeaturedImage = useCallback((html: string): string => {
+    return html
+      .replace(/<div class="blog-featured-image"[\s\S]*?<\/div>\s*<\/div>/i, '')
+      .trim();
+  }, []);
+
+  /** Generate a blog hero image via Freepik Mystic and inject it above the article */
   const handleGenerateImage = useCallback(async () => {
     setImageLoading(true);
     setImageUrl(null);
@@ -811,7 +818,9 @@ const ContentWriterPanel: React.FC = () => {
     setShowPrompt(false);
     try {
       const topic = selectedArticle?.result?.title || selectedArticle?.topic || '';
-      const articleContent = editorRef.current?.innerHTML || selectedArticle?.result?.article || '';
+      const rawContent = editorRef.current?.innerHTML || selectedArticle?.result?.article || '';
+      // Strip old image so we don't pass it to the prompt generator
+      const articleContent = stripFeaturedImage(rawContent);
       const result = await generateBlogImage(
         topic,
         articleContent,
@@ -821,6 +830,15 @@ const ContentWriterPanel: React.FC = () => {
       );
       setImageUrl(result.url);
       setPromptUsed(result.promptUsed);
+
+      // Inject image above article in the editor
+      const imgHtml = `<div class="blog-featured-image" style="margin-bottom: 24px;"><img src="${result.url}" alt="Featured image" style="width: 100%; border-radius: 12px; object-fit: cover; aspect-ratio: 16/9;" /></div>`;
+      const cleanContent = stripFeaturedImage(editorRef.current?.innerHTML || '');
+      if (editorRef.current) {
+        saveSnapshot();
+        editorRef.current.innerHTML = imgHtml + cleanContent;
+        handleEditorInput();
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Image generation failed';
       showToast(msg, 'error');
@@ -828,7 +846,7 @@ const ContentWriterPanel: React.FC = () => {
       setImageLoading(false);
       setImageProgress(0);
     }
-  }, [imageMode, customPrompt, selectedArticle, showToast]);
+  }, [imageMode, customPrompt, selectedArticle, stripFeaturedImage, saveSnapshot, handleEditorInput, showToast]);
 
   /** Selection bar: rewrite/expand/shorten/simplify selected text only */
   const handleQuickAction = useCallback(async (action: QuickActionType) => {
@@ -940,6 +958,11 @@ const ContentWriterPanel: React.FC = () => {
 
   const handleGenerate = useCallback(async () => {
     if (!topic.trim()) return;
+
+    // Reset image state so old image doesn't carry over to new article
+    setImageUrl(null);
+    setPromptUsed(null);
+    setShowPrompt(false);
 
     const id = `art_${Date.now()}`;
     const newArticle: Article = {
