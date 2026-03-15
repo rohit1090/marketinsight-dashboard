@@ -11,6 +11,17 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
         historyApiFallback: true,
         proxy: {
+          // Groq AI — forwards /api/ai/groq to Groq API (mirrors api/ai/groq.js serverless fn)
+          '/api/ai/groq': {
+            target: 'https://api.groq.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/ai\/groq/, '/openai/v1/chat/completions'),
+            configure: (proxy) => {
+              proxy.on('proxyReq', (proxyReq) => {
+                proxyReq.setHeader('Authorization', `Bearer ${env.VITE_GROQ_API_KEY || ''}`);
+              });
+            },
+          },
           // Proxy SerpAPI calls through Vite to avoid CORS — browser calls /api/serpapi/*,
           // Vite forwards them to https://serpapi.com/* server-side (no CORS restriction).
           '/api/serpapi': {
