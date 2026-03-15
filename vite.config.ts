@@ -27,6 +27,16 @@ export default defineConfig(({ mode }) => {
               'token':    env.VITE_SB_TOKEN     || '',
             },
           },
+          '/api/freepik': {
+            target: 'https://api.freepik.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/freepik/, ''),
+            configure: (proxy) => {
+              proxy.on('proxyReq', (proxyReq) => {
+                proxyReq.setHeader('x-freepik-api-key', env.VITE_FREEPIK_API_KEY || '');
+              });
+            },
+          },
         },
       },
       plugins: [react(), tailwindcss()],
