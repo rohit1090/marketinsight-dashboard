@@ -126,41 +126,55 @@ export async function createImageTask(
 
 // ─── Polling ───────────────────────────────────────────────────────────────────
 
-export async function pollImageTask(taskId: string): Promise<string> {
-  const MAX_POLLS = 30;
+export async function pollImageTask(
+  taskId: string,
+  onProgress?: (attempt: number) => void,
+): Promise<string> {
+  const maxAttempts = 30;
+  const intervalMs = 4000;
 
-  for (let attempt = 0; attempt < MAX_POLLS; attempt++) {
-    await new Promise(r => setTimeout(r, 2000));
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    onProgress?.(i + 1);
 
-    const pollRes = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`);
-    if (!pollRes.ok) continue;
+    try {
+      const response = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
-    const pollData = await pollRes.json();
-    const status: string = pollData.data?.status ?? '';
+      const data = await response.json();
+      console.log('[Freepik] Poll response:', JSON.stringify(data, null, 2));
 
-    if (status === 'COMPLETED') {
-      let url: string = pollData.data?.generated?.[0]?.url ?? '';
+      const status = data?.data?.status;
+      console.log(`[Freepik] Attempt ${i + 1} status: ${status}`);
 
-      // If generated array is empty, wait 2 s and retry once
-      if (!url) {
-        await new Promise(r => setTimeout(r, 2000));
-        const retry = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`);
-        if (retry.ok) {
-          const retryData = await retry.json();
-          url = retryData.data?.generated?.[0]?.url ?? '';
-        }
+      if (status === 'COMPLETED') {
+        const generated = data?.data?.generated;
+
+        if (generated?.[0]?.url) return generated[0].url;
+        if (generated?.[0]?.base64) return `data:image/jpeg;base64,${generated[0].base64}`;
+        if (data?.data?.url) return data.data.url;
+        if (data?.data?.image) return data.data.image;
+
+        console.error('[Freepik] COMPLETED but no URL found. Full response:', data);
+        throw new Error('Image completed but no URL found in response');
       }
 
-      if (!url) throw new Error('No image URL in Freepik response');
-      return url;
-    }
+      if (status === 'FAILED') {
+        console.error('[Freepik] Task failed:', data);
+        throw new Error(data?.data?.error || 'Freepik image generation failed');
+      }
 
-    if (status === 'FAILED' || status === 'ERROR') {
-      throw new Error('Freepik image generation failed');
+      console.log(`[Freepik] Still processing... attempt ${i + 1}/${maxAttempts}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('no URL') || msg.includes('failed')) throw err;
+      console.warn(`[Freepik] Poll attempt ${i + 1} error:`, msg);
     }
   }
 
-  throw new Error('Freepik image generation timed out after 60 s');
+  throw new Error('Image generation timed out after 2 minutes');
 }
 
 // ─── Main orchestrator ─────────────────────────────────────────────────────────
@@ -183,41 +197,11 @@ export async function generateBlogImage(
 
   onProgress?.(15);
 
-  const MAX_POLLS = 30;
-  for (let attempt = 0; attempt < MAX_POLLS; attempt++) {
-    await new Promise(r => setTimeout(r, 2000));
-
-    const pollRes = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`);
-    if (!pollRes.ok) continue;
-
-    const pollData = await pollRes.json();
-    const status: string = pollData.data?.status ?? '';
-
-    if (status === 'COMPLETED') {
-      onProgress?.(100);
-      let url: string = pollData.data?.generated?.[0]?.url ?? '';
-
-      // If generated array is empty on first COMPLETED response, retry once
-      if (!url) {
-        await new Promise(r => setTimeout(r, 2000));
-        const retry = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`);
-        if (retry.ok) {
-          const retryData = await retry.json();
-          url = retryData.data?.generated?.[0]?.url ?? '';
-        }
-      }
-
-      if (!url) throw new Error('No image URL in Freepik response');
-      return url;
-    }
-
-    if (status === 'FAILED' || status === 'ERROR') {
-      throw new Error('Freepik image generation failed');
-    }
-
-    // Progress 15 → 90 over 30 attempts
+  // Delegate polling to pollImageTask; map attempt count to 15→90% progress
+  const url = await pollImageTask(taskId, (attempt) => {
     onProgress?.(Math.min(90, 15 + attempt * 2.5));
-  }
+  });
 
-  throw new Error('Freepik image generation timed out after 60 s');
+  onProgress?.(100);
+  return url;
 }
