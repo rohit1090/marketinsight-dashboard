@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { generateSeoBlogArticle, runEditorAction, runQuickAction, humanizeContent, EditorActionType, QuickActionType, SeoArticleResult } from '../services/geminiService';
 import { detectAiContent, AiDetectionResult } from '../services/aiDetector';
 import { useCurrency } from '../services/useCurrency';
-import { generateImagePrompt, generateBlogImage, FreepikStyle } from '../services/freepikService';
+import { generateBlogImage, ImageMode } from '../services/freepikService';
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -401,8 +401,7 @@ const ContentWriterPanel: React.FC = () => {
 
   // ── Freepik AI Image ──────────────────────────────────────────────────────
   const [showImagePanel, setShowImagePanel] = useState(false);
-  const [imageMode, setImageMode] = useState<'auto' | 'custom'>('auto');
-  const [imageStyle, setImageStyle] = useState<FreepikStyle>('realistic');
+  const [imageMode, setImageMode] = useState<ImageMode>('featured');
   const [customPrompt, setCustomPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
@@ -805,28 +804,31 @@ const ContentWriterPanel: React.FC = () => {
 
   /** Generate a blog hero image via Freepik Mystic */
   const handleGenerateImage = useCallback(async () => {
-    const editor = editorRef.current;
     setImageLoading(true);
-    setImageProgress(0);
     setImageUrl(null);
+    setImageProgress(0);
     setPromptUsed(null);
     setShowPrompt(false);
     try {
-      let prompt = customPrompt.trim();
-      if (imageMode === 'auto' || !prompt) {
-        const content = editor?.innerHTML || selectedArticle?.result?.article || '';
-        prompt = await generateImagePrompt(content);
-      }
-      setPromptUsed(prompt);
-      const url = await generateBlogImage(prompt, imageStyle, setImageProgress);
-      setImageUrl(url);
+      const topic = selectedArticle?.result?.title || selectedArticle?.topic || '';
+      const articleContent = editorRef.current?.innerHTML || selectedArticle?.result?.article || '';
+      const result = await generateBlogImage(
+        topic,
+        articleContent,
+        imageMode,
+        imageMode === 'custom' ? customPrompt : undefined,
+        (attempt) => setImageProgress(Math.round((attempt / 30) * 100)),
+      );
+      setImageUrl(result.url);
+      setPromptUsed(result.promptUsed);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Image generation failed';
       showToast(msg, 'error');
     } finally {
       setImageLoading(false);
+      setImageProgress(0);
     }
-  }, [imageMode, imageStyle, customPrompt, selectedArticle, showToast]);
+  }, [imageMode, customPrompt, selectedArticle, showToast]);
 
   /** Selection bar: rewrite/expand/shorten/simplify selected text only */
   const handleQuickAction = useCallback(async (action: QuickActionType) => {
@@ -1917,155 +1919,180 @@ const ContentWriterPanel: React.FC = () => {
               </div>
 
               {/* Body */}
-              <div className="p-6 overflow-y-auto flex-1">
-                {/* Mode selector */}
-                <div className="flex gap-2 mb-5">
-                  {(['auto', 'custom'] as const).map(m => (
-                    <button
-                      key={m}
-                      onClick={() => setImageMode(m)}
-                      className={`flex-1 py-2 text-xs font-semibold rounded-xl border transition-all ${
-                        imageMode === m
-                          ? 'bg-pink-600 text-white border-pink-600'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-pink-300 hover:text-pink-700'
-                      }`}
-                    >
-                      {m === 'auto' ? 'Auto (from article)' : 'Custom prompt'}
-                    </button>
-                  ))}
-                </div>
+              <div className="overflow-y-auto flex-1">
+                <div className="space-y-3 p-4">
 
-                {/* Custom prompt input */}
-                {imageMode === 'custom' && (
-                  <textarea
-                    value={customPrompt}
-                    onChange={e => setCustomPrompt(e.target.value)}
-                    placeholder="Describe the image you want to generate…"
-                    rows={3}
-                    className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 placeholder-slate-400 outline-none focus:ring-2 focus:ring-pink-500 resize-none mb-5"
-                  />
-                )}
-
-                {/* Style selector */}
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Style</p>
-                <div className="grid grid-cols-4 gap-2 mb-5">
-                  {([
-                    { value: 'realistic',    label: 'Realistic' },
-                    { value: 'digital_art',  label: 'Digital Art' },
-                    { value: 'cinematic',    label: 'Cinematic' },
-                    { value: 'minimalist',   label: 'Minimalist' },
-                    { value: 'infographic',  label: 'Infographic' },
-                  ] as { value: FreepikStyle; label: string }[]).map(s => (
-                    <button
-                      key={s.value}
-                      onClick={() => setImageStyle(s.value)}
-                      className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
-                        imageStyle === s.value
-                          ? 'bg-pink-600 text-white border-pink-600'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-pink-300 hover:text-pink-700'
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Generated image result */}
-                {(imageLoading || imageUrl) && (
-                  <div className="rounded-2xl overflow-hidden border border-slate-100 mb-4">
-                    {imageLoading ? (
-                      <div className="bg-slate-50 flex flex-col items-center justify-center h-64 gap-4">
-                        <div className="w-12 h-12 rounded-full border-4 border-pink-200 border-t-pink-600 animate-spin" />
-                        <div className="text-center">
-                          <p className="text-sm font-semibold text-slate-700">Generating image…</p>
-                          <p className="text-xs text-slate-400 mt-1">{Math.round(imageProgress)}%</p>
-                        </div>
-                        {/* Progress bar */}
-                        <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-pink-500 to-rose-500 rounded-full transition-all duration-500"
-                            style={{ width: `${imageProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    ) : imageUrl ? (
-                      <img
-                        src={imageUrl}
-                        alt="AI generated blog image"
-                        className="w-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                )}
-
-                {/* Prompt used toggle */}
-                {promptUsed && !imageLoading && (
-                  <div className="mb-4">
-                    <button
-                      onClick={() => setShowPrompt(v => !v)}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors"
-                    >
-                      <svg className={`w-3.5 h-3.5 transition-transform ${showPrompt ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
-                      {showPrompt ? 'Hide prompt' : 'View prompt used'}
-                    </button>
-                    {showPrompt && (
-                      <p className="mt-2 text-xs text-slate-600 bg-slate-50 rounded-xl px-4 py-3 leading-relaxed border border-slate-100">
-                        {promptUsed}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
-                {imageUrl && !imageLoading && (
-                  <a
-                    href={imageUrl}
-                    download="blog-image.jpg"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+                  {/* Option 1 — Featured Image */}
+                  <button
+                    onClick={() => setImageMode('featured')}
+                    className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
+                      imageMode === 'featured'
+                        ? 'border-pink-500 bg-pink-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download
-                  </a>
-                )}
-                <button
-                  onClick={handleGenerateImage}
-                  disabled={imageLoading || (imageMode === 'custom' && !customPrompt.trim())}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-700 hover:to-rose-600 rounded-xl transition-all disabled:opacity-50 shadow-sm"
-                >
-                  {imageLoading ? (
-                    <>
-                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                      </svg>
-                      Generating…
-                    </>
-                  ) : imageUrl ? (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Regenerate
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                        <circle cx="8.5" cy="8.5" r="1.5"/>
-                        <polyline points="21 15 16 10 5 21"/>
-                      </svg>
-                      Generate Image
-                    </>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 ${
+                      imageMode === 'featured' ? 'bg-pink-100' : 'bg-gray-100'
+                    }`}>
+                      🖼️
+                    </div>
+                    <div>
+                      <p className={`text-sm font-bold ${imageMode === 'featured' ? 'text-pink-600' : 'text-gray-800'}`}>
+                        Featured Image
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        AI reads your article and generates a perfect matching photo automatically
+                      </p>
+                    </div>
+                    {imageMode === 'featured' && (
+                      <div className="ml-auto w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xs">✓</span>
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Option 2 — Infographic */}
+                  <button
+                    onClick={() => setImageMode('infographic')}
+                    className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
+                      imageMode === 'infographic'
+                        ? 'border-pink-500 bg-pink-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 ${
+                      imageMode === 'infographic' ? 'bg-pink-100' : 'bg-gray-100'
+                    }`}>
+                      📊
+                    </div>
+                    <div>
+                      <p className={`text-sm font-bold ${imageMode === 'infographic' ? 'text-pink-600' : 'text-gray-800'}`}>
+                        Infographic
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Generates a clean flat design infographic illustration based on your article topic
+                      </p>
+                    </div>
+                    {imageMode === 'infographic' && (
+                      <div className="ml-auto w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xs">✓</span>
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Option 3 — Custom Prompt */}
+                  <button
+                    onClick={() => setImageMode('custom')}
+                    className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left ${
+                      imageMode === 'custom'
+                        ? 'border-pink-500 bg-pink-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 ${
+                      imageMode === 'custom' ? 'bg-pink-100' : 'bg-gray-100'
+                    }`}>
+                      ✏️
+                    </div>
+                    <div className="flex-1">
+                      <p className={`text-sm font-bold ${imageMode === 'custom' ? 'text-pink-600' : 'text-gray-800'}`}>
+                        Custom Prompt
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Describe exactly what image you want to generate
+                      </p>
+                    </div>
+                    {imageMode === 'custom' && (
+                      <div className="ml-auto w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xs">✓</span>
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Custom textarea — only when custom selected */}
+                  {imageMode === 'custom' && (
+                    <textarea
+                      value={customPrompt}
+                      onChange={e => setCustomPrompt(e.target.value)}
+                      placeholder="Describe your image... e.g. 'A student studying at a desk with books and laptop, warm golden library lighting, cozy atmosphere'"
+                      className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl p-3 outline-none focus:border-pink-400 resize-none h-24 placeholder-gray-400 mt-1"
+                    />
                   )}
-                </button>
+
+                  {/* Generated image result */}
+                  {(imageLoading || imageUrl) && (
+                    <div className="rounded-2xl overflow-hidden border border-slate-100">
+                      {imageLoading ? (
+                        <div className="bg-slate-50 flex flex-col items-center justify-center h-48 gap-3">
+                          <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin" style={{ borderTopColor: '#FF3CAC' }} />
+                          <p className="text-sm font-semibold text-slate-700">
+                            Generating…{imageProgress > 0 && ` ${imageProgress}%`}
+                          </p>
+                          <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${imageProgress}%`, background: 'linear-gradient(135deg, #FF6B35, #FF3CAC)' }}
+                            />
+                          </div>
+                        </div>
+                      ) : imageUrl ? (
+                        <div>
+                          <img src={imageUrl} alt="AI generated blog image" className="w-full object-cover" />
+                          <div className="flex items-center gap-2 p-3 bg-slate-50 border-t border-slate-100">
+                            <a
+                              href={imageUrl}
+                              download="blog-image.jpg"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-white transition-colors"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              Download
+                            </a>
+                            {promptUsed && (
+                              <button
+                                onClick={() => setShowPrompt(v => !v)}
+                                className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+                              >
+                                <svg className={`w-3 h-3 transition-transform ${showPrompt ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                </svg>
+                                {showPrompt ? 'Hide prompt' : 'View prompt'}
+                              </button>
+                            )}
+                          </div>
+                          {showPrompt && promptUsed && (
+                            <p className="text-xs text-slate-600 bg-slate-50 px-4 py-3 leading-relaxed border-t border-slate-100">
+                              {promptUsed}
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* Generate Button */}
+                  <button
+                    onClick={handleGenerateImage}
+                    disabled={imageLoading || (imageMode === 'custom' && !customPrompt.trim())}
+                    className="w-full py-3.5 rounded-2xl text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
+                    style={{ background: 'linear-gradient(135deg, #FF6B35, #FF3CAC)' }}
+                  >
+                    {imageLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Generating...{imageProgress > 0 && ` ${imageProgress}%`}
+                      </>
+                    ) : imageUrl ? (
+                      <>🔄 Regenerate</>
+                    ) : (
+                      <>🎨 Generate Image</>
+                    )}
+                  </button>
+
+                </div>
               </div>
             </div>
           </div>

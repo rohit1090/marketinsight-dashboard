@@ -4,20 +4,20 @@
  * Freepik Mystic AI image generation service.
  *
  * Flow:
- *  1. generateImagePrompt()  — uses Groq to craft an image prompt from article content
+ *  1. generateImagePrompt()  — uses Groq to craft a visual prompt from topic + content
  *  2. createImageTask()      — POST to Freepik Mystic, returns task_id
- *  3. pollImageTask()        — GET /v1/ai/mystic/{task_id} until COMPLETED
- *  4. generateBlogImage()    — orchestrates 1–3, exposes progress callback
+ *  3. pollImageTask()        — GET until COMPLETED, returns image URL
+ *  4. generateBlogImage()    — orchestrates 1–3, returns { url, promptUsed }
  */
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-export type FreepikStyle =
-  | 'realistic'
-  | 'digital_art'
-  | 'minimalist'
-  | 'cinematic'
-  | 'infographic';
+export type ImageMode = 'featured' | 'infographic' | 'custom';
+
+export interface ImageResult {
+  url: string;
+  promptUsed: string;
+}
 
 // ─── Prompt generator ─────────────────────────────────────────────────────────
 
@@ -30,11 +30,15 @@ function extractText(html: string, maxChars = 2000): string {
 }
 
 /**
- * Uses Groq to generate a focused, visual image prompt from article content.
+ * Uses Groq to generate a focused, visual image prompt from topic + article content.
  * Falls back to a generic prompt on any error.
  */
-export async function generateImagePrompt(articleHtml: string): Promise<string> {
+export async function generateImagePrompt(
+  topic: string,
+  articleHtml: string,
+): Promise<string> {
   const text = extractText(articleHtml);
+  const context = topic ? `Topic: ${topic}\n\n${text}` : text;
   try {
     const res = await fetch('/api/ai/groq', {
       method: 'POST',
@@ -52,7 +56,7 @@ export async function generateImagePrompt(articleHtml: string): Promise<string> 
           },
           {
             role: 'user',
-            content: `Create an image prompt for a blog hero image based on this article:\n\n${text}`,
+            content: `Create an image prompt for a blog hero image based on this article:\n\n${context}`,
           },
         ],
         max_tokens: 120,
@@ -69,17 +73,7 @@ export async function generateImagePrompt(articleHtml: string): Promise<string> 
 
 // ─── Task creation ─────────────────────────────────────────────────────────────
 
-const STYLE_MAP: Record<string, string> = {
-  digital_art: 'digital-art',
-  minimalist: 'minimalist',
-  cinematic: 'cinematic',
-  infographic: 'infographic',
-};
-
-export async function createImageTask(
-  prompt: string,
-  style?: FreepikStyle,
-): Promise<string> {
+export async function createImageTask(prompt: string): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: any = {
     prompt,
@@ -91,17 +85,6 @@ export async function createImageTask(
     fixed_generation: false,
     filter_nsfw: true,
   };
-
-  if (style && style !== 'realistic') {
-    body.styling = {
-      styles: [
-        {
-          name: STYLE_MAP[style] || style,
-          strength: 100,
-        },
-      ],
-    };
-  }
 
   const response = await fetch('/api/freepik/v1/ai/mystic', {
     method: 'POST',
@@ -182,26 +165,33 @@ export async function pollImageTask(
 /**
  * Generates a blog hero image end-to-end.
  *
- * @param prompt      Image description
- * @param style       Freepik style preset (omit or 'realistic' for no style filter)
- * @param onProgress  Callback with 0–100 progress values
+ * @param topic          Article topic / title
+ * @param articleHtml    Full article HTML content
+ * @param mode           'featured' | 'infographic' | 'custom'
+ * @param customPrompt   Used only when mode === 'custom'
+ * @param onProgress     Callback with attempt number (1–30)
  */
 export async function generateBlogImage(
-  prompt: string,
-  style?: FreepikStyle,
-  onProgress?: (progress: number) => void,
-): Promise<string> {
-  onProgress?.(5);
+  topic: string,
+  articleHtml: string,
+  mode: ImageMode,
+  customPrompt?: string,
+  onProgress?: (attempt: number) => void,
+): Promise<ImageResult> {
+  let finalPrompt: string;
 
-  const taskId = await createImageTask(prompt, style);
+  if (mode === 'custom' && customPrompt?.trim()) {
+    finalPrompt = `${customPrompt.trim()}, high quality, professional, blog image, widescreen 16:9, no text`;
+  } else if (mode === 'infographic') {
+    const base = await generateImagePrompt(topic, articleHtml);
+    finalPrompt = `${base}, flat design infographic style, clean vector illustration, colorful icons, white background, professional business design, no photography, no realistic elements`;
+  } else {
+    // featured
+    finalPrompt = await generateImagePrompt(topic, articleHtml);
+  }
 
-  onProgress?.(15);
+  const taskId = await createImageTask(finalPrompt);
+  const url = await pollImageTask(taskId, onProgress);
 
-  // Delegate polling to pollImageTask; map attempt count to 15→90% progress
-  const url = await pollImageTask(taskId, (attempt) => {
-    onProgress?.(Math.min(90, 15 + attempt * 2.5));
-  });
-
-  onProgress?.(100);
-  return url;
+  return { url, promptUsed: finalPrompt };
 }
