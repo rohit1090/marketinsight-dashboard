@@ -42,6 +42,33 @@ async function callGroq(systemPrompt: string, userMessage: string): Promise<stri
   return text;
 }
 
+// ─── Banner text generator ────────────────────────────────────────────────────
+
+/** Generates a short punchy headline for the image banner overlay. */
+export async function generateBannerText(topic: string): Promise<string> {
+  try {
+    const result = await callGroq(
+      `Generate a short punchy banner text for a blog featured image about this topic.
+
+Rules:
+- Maximum 8 words
+- Bold, catchy, headline style
+- No punctuation except !
+- Like a magazine cover headline
+- Examples:
+  "Master CA in 4 Years Complete Guide"
+  "Top 10 Gaming Laptops That Dominate 2026"
+  "Best CA Coaching Your Success Starts Here"
+
+Output ONLY the banner text. Nothing else.`,
+      `Topic: ${topic}`,
+    );
+    return result.replace(/^["']|["']$/g, '').trim();
+  } catch {
+    return topic;
+  }
+}
+
 // ─── Prompt generator ─────────────────────────────────────────────────────────
 
 export async function generateImagePrompt(
@@ -271,8 +298,15 @@ export async function generateBlogImage(
   if (mode === 'custom' && customPrompt?.trim()) {
     finalPrompt = `${customPrompt.trim()}, high quality, professional, blog image, widescreen 16:9, no text`;
   } else if (mode === 'infographic') {
-    const base = await generateImagePrompt(topic, articleHtml);
-    finalPrompt = `${base}, flat design infographic style, clean vector illustration, colorful icons, white background, professional business design, no photography, no realistic elements`;
+    const cleanContent = articleHtml.replace(/<[^>]*>/g, '').slice(0, 500);
+    const keyPoints = await callGroq(
+      `Extract 3-4 key facts or statistics from this article that would look great in an infographic.
+Return as comma separated short phrases. Max 6 words each.
+Example: "4-5 years duration, 3 exam levels, INR 6-20L salary, 50% marks required"
+Output ONLY the comma separated phrases. Nothing else.`,
+      `Topic: ${topic}\nContent: ${cleanContent}`,
+    );
+    finalPrompt = `Professional infographic poster about "${topic}", flat design vector illustration style, contains visual data representation of: ${keyPoints}, clean white background, colorful icons and charts, modern typography layout, professional business style, organized sections with visual hierarchy, bright colors, no photography, high resolution, sharp, 8K quality`;
   } else {
     // featured
     finalPrompt = await generateImagePrompt(topic, articleHtml);

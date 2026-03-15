@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { generateSeoBlogArticle, runEditorAction, runQuickAction, humanizeContent, EditorActionType, QuickActionType, SeoArticleResult } from '../services/geminiService';
 import { detectAiContent, AiDetectionResult } from '../services/aiDetector';
 import { useCurrency } from '../services/useCurrency';
-import { generateBlogImage, ImageMode } from '../services/freepikService';
+import { generateBlogImage, generateBannerText, ImageMode } from '../services/freepikService';
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -819,20 +819,35 @@ const ContentWriterPanel: React.FC = () => {
     try {
       const topic = selectedArticle?.result?.title || selectedArticle?.topic || '';
       const rawContent = editorRef.current?.innerHTML || selectedArticle?.result?.article || '';
-      // Strip old image so we don't pass it to the prompt generator
       const articleContent = stripFeaturedImage(rawContent);
-      const result = await generateBlogImage(
-        topic,
-        articleContent,
-        imageMode,
-        imageMode === 'custom' ? customPrompt : undefined,
-        (attempt) => setImageProgress(Math.round((attempt / 30) * 100)),
-      );
+
+      const [result, bannerText] = await Promise.all([
+        generateBlogImage(
+          topic,
+          articleContent,
+          imageMode,
+          imageMode === 'custom' ? customPrompt : undefined,
+          (attempt) => setImageProgress(Math.round((attempt / 30) * 100)),
+        ),
+        generateBannerText(topic),
+      ]);
+
       setImageUrl(result.url);
       setPromptUsed(result.promptUsed);
 
-      // Inject image above article in the editor
-      const imgHtml = `<div class="blog-featured-image" style="margin-bottom: 24px;"><img src="${result.url}" alt="Featured image" style="width: 100%; border-radius: 12px; object-fit: cover; aspect-ratio: 16/9;" /></div>`;
+      const imgHtml = `<div class="blog-featured-image" style="position: relative; margin-bottom: 28px; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
+  <img src="${result.url}" alt="Featured image" style="width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />
+  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%);"></div>
+  <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 24px;">
+    <p style="color: white; font-size: 20px; font-weight: 800; margin: 0; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: -0.3px;">${bannerText}</p>
+    <p style="color: rgba(255,255,255,0.7); font-size: 12px; margin: 4px 0 0 0; font-weight: 500;">✨ AI Generated Image</p>
+  </div>
+  <div class="img-controls" style="position: absolute; top: 12px; right: 12px; display: flex; gap: 8px;">
+    <a href="${result.url}" download="featured-image.jpg" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Download image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
+    <button onclick="const imgDiv=this.closest('.blog-featured-image');if(imgDiv)imgDiv.remove();" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Remove image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>
+  </div>
+</div>`;
+
       const cleanContent = stripFeaturedImage(editorRef.current?.innerHTML || '');
       if (editorRef.current) {
         saveSnapshot();
@@ -847,6 +862,18 @@ const ContentWriterPanel: React.FC = () => {
       setImageProgress(0);
     }
   }, [imageMode, customPrompt, selectedArticle, stripFeaturedImage, saveSnapshot, handleEditorInput, showToast]);
+
+  /** Remove the injected featured image from the article and reset panel state */
+  const handleRemoveImage = useCallback(() => {
+    if (editorRef.current) {
+      saveSnapshot();
+      editorRef.current.innerHTML = stripFeaturedImage(editorRef.current.innerHTML);
+      handleEditorInput();
+    }
+    setImageUrl(null);
+    setPromptUsed(null);
+    setShowPrompt(false);
+  }, [stripFeaturedImage, saveSnapshot, handleEditorInput]);
 
   /** Selection bar: rewrite/expand/shorten/simplify selected text only */
   const handleQuickAction = useCallback(async (action: QuickActionType) => {
@@ -2114,6 +2141,16 @@ const ContentWriterPanel: React.FC = () => {
                       <>🎨 Generate Image</>
                     )}
                   </button>
+
+                  {/* Remove Image from Article */}
+                  {imageUrl && !imageLoading && (
+                    <button
+                      onClick={handleRemoveImage}
+                      className="w-full py-2 rounded-xl text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-colors mt-2"
+                    >
+                      🗑️ Remove Image from Article
+                    </button>
+                  )}
 
                 </div>
               </div>
