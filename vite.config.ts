@@ -31,10 +31,8 @@ export default defineConfig(({ mode }) => {
             target: 'https://api.freepik.com',
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api\/freepik/, ''),
-            configure: (proxy) => {
-              proxy.on('proxyReq', (proxyReq) => {
-                proxyReq.setHeader('x-freepik-api-key', env.VITE_FREEPIK_API_KEY || '');
-              });
+            headers: {
+              'x-freepik-api-key': env.VITE_FREEPIK_API_KEY || '',
             },
           },
         },
