@@ -19,55 +19,138 @@ export interface ImageResult {
   promptUsed: string;
 }
 
-// ─── Prompt generator ─────────────────────────────────────────────────────────
+// ─── Groq helper ──────────────────────────────────────────────────────────────
 
-function extractText(html: string, maxChars = 2000): string {
-  return html
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxChars);
+/** Minimal Groq caller — returns the assistant message text. */
+async function callGroq(systemPrompt: string, userMessage: string): Promise<string> {
+  const res = await fetch('/api/ai/groq', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userMessage },
+      ],
+      max_tokens: 200,
+      temperature: 0.8,
+    }),
+  });
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error('Empty response from Groq');
+  return text;
 }
 
-/**
- * Uses Groq to generate a focused, visual image prompt from topic + article content.
- * Falls back to a generic prompt on any error.
- */
+// ─── Prompt generator ─────────────────────────────────────────────────────────
+
 export async function generateImagePrompt(
   topic: string,
-  articleHtml: string,
+  articleContent?: string,
 ): Promise<string> {
-  const text = extractText(articleHtml);
-  const context = topic ? `Topic: ${topic}\n\n${text}` : text;
+  const cleanContent = articleContent
+    ? articleContent.replace(/<[^>]*>/g, '').slice(0, 1000)
+    : '';
+
   try {
-    const res = await fetch('/api/ai/groq', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You write concise, vivid image generation prompts for blog hero images. ' +
-              'Focus on visual elements: setting, lighting, mood, colors. ' +
-              'Never include text, logos, or readable words in the prompt. ' +
-              'Avoid faces and specific people. Max 60 words. Return ONLY the prompt.',
-          },
-          {
-            role: 'user',
-            content: `Create an image prompt for a blog hero image based on this article:\n\n${context}`,
-          },
-        ],
-        max_tokens: 120,
-        temperature: 0.8,
-      }),
-    });
-    const data = await res.json();
-    const prompt = data.choices?.[0]?.message?.content?.trim();
-    return prompt || 'A professional, modern blog hero image with clean composition and vibrant colors';
+    const result = await callGroq(
+      `You are a world-class AI image prompt engineer specializing in Freepik Mystic AI generation.
+
+Your job is to analyze ANY blog article and create the most relevant, specific, and visually stunning image prompt possible.
+
+━━━ STEP 1: IDENTIFY CONTENT CATEGORY ━━━
+First determine which category the content belongs to:
+
+EDUCATION & COURSES (CA, MBA, ACCA, coaching, online courses, degrees)
+→ Show: students studying, books, classrooms, certificates, campus, teachers
+
+TECHNOLOGY & GADGETS (laptops, phones, software, AI, apps, gaming)
+→ Show: the actual device/product, tech workspace, screens with UI, modern setup
+
+FINANCE & BUSINESS (stocks, investing, banking, startups, economy)
+→ Show: charts, graphs, money, office, business people, financial data screens
+
+HEALTH & FITNESS (diet, workout, yoga, mental health, medicine)
+→ Show: the actual exercise/food/activity, gym, healthy meals, medical setting
+
+FOOD & COOKING (recipes, restaurants, cuisine, nutrition)
+→ Show: the actual dish beautifully plated, kitchen, cooking process, ingredients
+
+TRAVEL & PLACES (cities, countries, hotels, tourism)
+→ Show: the actual landmark/destination, scenic views, local culture, architecture
+
+CAREER & JOBS (resume, interview, salary, skills, hiring)
+→ Show: professional office, interview scene, handshake, workplace, laptop with work
+
+FASHION & LIFESTYLE (clothes, beauty, home decor, luxury)
+→ Show: the actual product/style, lifestyle setting, model, interior
+
+SPORTS & GAMING (cricket, football, esports, gaming)
+→ Show: the actual sport/game in action, stadium, gaming setup, players
+
+MARKETING & SEO (digital marketing, social media, SEO, content)
+→ Show: analytics dashboard, marketing team, social media screens, growth charts
+
+LEGAL & GOVERNMENT (laws, taxes, compliance, government schemes)
+→ Show: legal documents, courthouse, official setting, professional advisor
+
+REAL ESTATE & HOME (property, rent, interior, construction)
+→ Show: beautiful property, interior design, architecture, home setting
+
+PARENTING & KIDS (children, school, toys, family)
+→ Show: happy children, family moments, school setting, learning activities
+
+ENVIRONMENT & NATURE (climate, sustainability, plants, animals)
+→ Show: nature scenes, wildlife, eco-friendly settings, green energy
+
+ANY OTHER TOPIC → Extract the main subject and show the most visually representative scene for that topic
+
+━━━ STEP 2: DETECT LOCATION/REGION ━━━
+If content mentions India/Indian cities → Use Indian setting, Indian people, Indian context
+If content mentions specific country/city → Use that location's visual elements
+If content is global/generic → Use universal/neutral setting
+
+━━━ STEP 3: BUILD THE PERFECT PROMPT ━━━
+Combine these elements:
+[MAIN SUBJECT from content analysis] + [SPECIFIC DETAILS from article — brand names, product names, course names] + [PEOPLE if topic involves humans] + [SETTING/LOCATION] + [LIGHTING: always bright, natural or studio] + [STYLE: photorealistic, professional photography] + [QUALITY: sharp focus, 8K, high resolution] + [COMPOSITION: wide horizontal, rule of thirds]
+
+━━━ STRICT RULES ━━━
+✅ Always bright, well-lit images
+✅ Always photorealistic unless topic needs illustration
+✅ Always sharp focus, high resolution
+✅ Always horizontal/widescreen composition
+✅ Include people when topic is about humans (courses, careers, lifestyle etc)
+✅ Show actual products for tech/gadget topics
+✅ Use location context from article
+❌ Never dark or moody lighting
+❌ Never empty rooms with no subject
+❌ Never text, words, signs in image
+❌ Never generic stock photo feel
+❌ Never watermarks or logos
+❌ Never abstract when specific is possible
+❌ Never ignore the actual topic
+
+━━━ OUTPUT FORMAT ━━━
+Output ONLY the final image prompt. Maximum 120 words.
+No explanations, no labels, no categories. Just the pure image generation prompt.
+Make it detailed, specific, and vivid.`,
+
+      `Analyze this blog content and generate the perfect image prompt:
+
+TOPIC: ${topic}
+
+CONTENT:
+${cleanContent || topic}
+
+Generate the most relevant and visually stunning image prompt for this content.`,
+    );
+
+    return result
+      .replace(/^["']|["']$/g, '')  // remove wrapping quotes
+      .replace(/^prompt:/i, '')      // remove "Prompt:" prefix
+      .trim();
   } catch {
-    return 'A professional, modern blog hero image with clean composition and vibrant colors';
+    return `${topic}, professional blog hero image, bright natural lighting, photorealistic, high resolution, widescreen 16:9`;
   }
 }
 
