@@ -135,7 +135,12 @@ export async function pollImageTask(
       if (status === 'COMPLETED') {
         const generated = data?.data?.generated;
 
-        if (generated?.[0]?.url) return generated[0].url;
+        // generated is array of strings e.g. ["https://..."]
+        if (generated?.[0]) {
+          return typeof generated[0] === 'string'
+            ? generated[0]        // plain string URL
+            : generated[0]?.url;  // object with url property
+        }
         if (generated?.[0]?.base64) return `data:image/jpeg;base64,${generated[0].base64}`;
         if (data?.data?.url) return data.data.url;
         if (data?.data?.image) return data.data.image;
