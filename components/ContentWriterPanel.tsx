@@ -408,6 +408,7 @@ const ContentWriterPanel: React.FC = () => {
   const [imageLoading, setImageLoading] = useState(false);
   const [imageProgress, setImageProgress] = useState(0);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [bannerText, setBannerText] = useState('');
 
   // ── Undo / Redo history ──────────────────────────────────────────────────
   const undoStack = useRef<string[]>([]);
@@ -809,6 +810,61 @@ const ContentWriterPanel: React.FC = () => {
       .trim();
   }, []);
 
+  /** Blob-based image download — works across CDN origins */
+  const downloadImageWithOverlay = useCallback(async (url: string, banner: string, filename: string) => {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = url;
+      });
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      // Dark gradient at bottom
+      const gradient = ctx.createLinearGradient(0, canvas.height * 0.5, 0, canvas.height);
+      gradient.addColorStop(0, 'rgba(0,0,0,0)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0.75)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Banner text
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${Math.round(canvas.width * 0.035)}px Arial`;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 8;
+      ctx.fillText(banner, 40, canvas.height - 60);
+      canvas.toBlob((blob) => {
+        if (!blob) { window.open(url, '_blank'); return; }
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      }, 'image/jpeg', 0.95);
+    } catch {
+      // Fallback: plain blob download without overlay
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      } catch { window.open(url, '_blank'); }
+    }
+  }, []);
+
   /** Generate a blog hero image via Freepik Mystic and inject it above the article */
   const handleGenerateImage = useCallback(async () => {
     setImageLoading(true);
@@ -818,10 +874,11 @@ const ContentWriterPanel: React.FC = () => {
     setShowPrompt(false);
     try {
       const topic = selectedArticle?.result?.title || selectedArticle?.topic || '';
+      // Strip existing images only for prompt context, not from editor
       const rawContent = editorRef.current?.innerHTML || selectedArticle?.result?.article || '';
       const articleContent = stripFeaturedImage(rawContent);
 
-      const [result, bannerText] = await Promise.all([
+      const [result, banner] = await Promise.all([
         generateBlogImage(
           topic,
           articleContent,
@@ -834,24 +891,30 @@ const ContentWriterPanel: React.FC = () => {
 
       setImageUrl(result.url);
       setPromptUsed(result.promptUsed);
+      setBannerText(banner);
 
+      // FIX 1: blob download button (no <a download> which opens new tab for cross-origin)
+      // FIX 4: removed "✨ AI Generated Image" subtitle
       const imgHtml = `<div class="blog-featured-image" style="position: relative; margin-bottom: 28px; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
   <img src="${result.url}" alt="Featured image" style="width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />
   <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%);"></div>
   <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 24px;">
-    <p style="color: white; font-size: 20px; font-weight: 800; margin: 0; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: -0.3px;">${bannerText}</p>
-    <p style="color: rgba(255,255,255,0.7); font-size: 12px; margin: 4px 0 0 0; font-weight: 500;">✨ AI Generated Image</p>
+    <p style="color: white; font-size: 20px; font-weight: 800; margin: 0; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: -0.3px;">${banner}</p>
   </div>
   <div class="img-controls" style="position: absolute; top: 12px; right: 12px; display: flex; gap: 8px;">
-    <a href="${result.url}" download="featured-image.jpg" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Download image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a>
+    <button onclick="(async()=>{try{const r=await fetch('${result.url}');const b=await r.blob();const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='blog-image.jpg';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);}catch(e){window.open('${result.url}','_blank');}})()" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Download image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
     <button onclick="const imgDiv=this.closest('.blog-featured-image');if(imgDiv)imgDiv.remove();" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Remove image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>
   </div>
 </div>`;
 
-      const cleanContent = stripFeaturedImage(editorRef.current?.innerHTML || '');
+      // FIX 2: keep existing images — prepend new image to raw content (don't strip others)
+      const currentContent = editorRef.current?.innerHTML || '';
+      const hasExistingImage = currentContent.includes('class="blog-featured-image"');
       if (editorRef.current) {
         saveSnapshot();
-        editorRef.current.innerHTML = imgHtml + cleanContent;
+        editorRef.current.innerHTML = hasExistingImage
+          ? imgHtml + currentContent          // keep existing, add new at top
+          : imgHtml + articleContent;          // no existing image — prepend to clean content
         handleEditorInput();
       }
     } catch (err: unknown) {
@@ -2089,18 +2152,15 @@ const ContentWriterPanel: React.FC = () => {
                         <div>
                           <img src={imageUrl} alt="AI generated blog image" className="w-full object-cover" />
                           <div className="flex items-center gap-2 p-3 bg-slate-50 border-t border-slate-100">
-                            <a
-                              href={imageUrl}
-                              download="blog-image.jpg"
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              onClick={() => imageUrl && downloadImageWithOverlay(imageUrl, bannerText, 'blog-image.jpg')}
                               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-white transition-colors"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                               </svg>
                               Download
-                            </a>
+                            </button>
                             {promptUsed && (
                               <button
                                 onClick={() => setShowPrompt(v => !v)}

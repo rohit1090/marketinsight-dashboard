@@ -298,15 +298,19 @@ export async function generateBlogImage(
   if (mode === 'custom' && customPrompt?.trim()) {
     finalPrompt = `${customPrompt.trim()}, high quality, professional, blog image, widescreen 16:9, no text`;
   } else if (mode === 'infographic') {
-    const cleanContent = articleHtml.replace(/<[^>]*>/g, '').slice(0, 500);
+    const cleanContent = articleHtml.replace(/<[^>]*>/g, '').slice(0, 400);
     const keyPoints = await callGroq(
-      `Extract 3-4 key facts or statistics from this article that would look great in an infographic.
-Return as comma separated short phrases. Max 6 words each.
-Example: "4-5 years duration, 3 exam levels, INR 6-20L salary, 50% marks required"
-Output ONLY the comma separated phrases. Nothing else.`,
+      `Look at this blog content and identify the main visual concept that would make a great infographic illustration.
+
+Describe 3-4 visual elements/icons that represent the topic — NO text descriptions, only visual concepts.
+
+Example for CA Course: "graduation cap, accounting calculator, certificate scroll, rupee coin stack"
+Example for Gaming Laptops: "gaming laptop with RGB, GPU chip, fps counter display, cooling fan"
+
+Output ONLY comma separated visual elements. Max 4 elements. No sentences.`,
       `Topic: ${topic}\nContent: ${cleanContent}`,
     );
-    finalPrompt = `Professional infographic poster about "${topic}", flat design vector illustration style, contains visual data representation of: ${keyPoints}, clean white background, colorful icons and charts, modern typography layout, professional business style, organized sections with visual hierarchy, bright colors, no photography, high resolution, sharp, 8K quality`;
+    finalPrompt = `Clean professional infographic illustration about ${topic}, featuring icons of: ${keyPoints}, flat design vector art style, vibrant colors on white background, modern minimal design, circular and grid layout, professional business infographic style, colorful geometric shapes, NO text NO words NO letters NO numbers, clean icons only, high resolution, 8K quality, Adobe Illustrator style flat design`;
   } else {
     // featured
     finalPrompt = await generateImagePrompt(topic, articleHtml);
