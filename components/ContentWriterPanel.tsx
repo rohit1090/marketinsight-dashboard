@@ -366,8 +366,10 @@ const ContentWriterPanel: React.FC = () => {
 
   const isGenerating = articles.some(a => a.status === 'generating');
 
-  // Selected article for editor
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Selected article for editor — persisted so refresh returns to the same article
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    sessionStorage.getItem('cw_selectedId') ?? null
+  );
 
   // Editor state (live)
   const editorRef = useRef<HTMLDivElement>(null);
@@ -422,6 +424,15 @@ const ContentWriterPanel: React.FC = () => {
   useEffect(() => {
     sessionStorage.setItem('cw_articles', JSON.stringify(articles));
   }, [articles]);
+
+  // Persist selected article ID so refresh returns to the editor
+  useEffect(() => {
+    if (selectedId) {
+      sessionStorage.setItem('cw_selectedId', selectedId);
+    } else {
+      sessionStorage.removeItem('cw_selectedId');
+    }
+  }, [selectedId]);
 
 
   const selectedArticle = articles.find(a => a.id === selectedId) ?? null;
