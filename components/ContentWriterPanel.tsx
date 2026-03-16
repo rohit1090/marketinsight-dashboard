@@ -404,6 +404,7 @@ const ContentWriterPanel: React.FC = () => {
   const [imageMode, setImageMode] = useState<ImageMode>('featured');
   const [customPrompt, setCustomPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [generatedMode, setGeneratedMode] = useState<ImageMode | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageProgress, setImageProgress] = useState(0);
@@ -832,6 +833,7 @@ const ContentWriterPanel: React.FC = () => {
       );
 
       setImageUrl(result.url);
+      setGeneratedMode(imageMode);
       setPromptUsed(result.promptUsed);
 
       const imgHtml = `<div class="blog-featured-image" data-image-container="true" style="position: relative; margin-bottom: 28px; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
@@ -869,6 +871,7 @@ const ContentWriterPanel: React.FC = () => {
       handleEditorInput();
     }
     setImageUrl(null);
+    setGeneratedMode(null);
     setPromptUsed(null);
     setShowPrompt(false);
   }, [stripFeaturedImage, saveSnapshot, handleEditorInput]);
@@ -1037,6 +1040,7 @@ const ContentWriterPanel: React.FC = () => {
 
     // Reset image state so old image doesn't carry over to new article
     setImageUrl(null);
+    setGeneratedMode(null);
     setPromptUsed(null);
     setShowPrompt(false);
 
@@ -2181,7 +2185,7 @@ const ContentWriterPanel: React.FC = () => {
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         Generating...{imageProgress > 0 && ` ${imageProgress}%`}
                       </>
-                    ) : imageUrl ? (
+                    ) : (imageUrl && generatedMode === imageMode) ? (
                       <>🔄 Regenerate</>
                     ) : (
                       <>🎨 Generate Image</>
