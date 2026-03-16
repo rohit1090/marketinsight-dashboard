@@ -38,6 +38,10 @@ export default defineConfig(({ mode }) => {
               'token':    env.VITE_SB_TOKEN     || '',
             },
           },
+          '/api/download-image': {
+            target: 'http://localhost:3001',
+            changeOrigin: false,
+          },
           '/api/freepik': {
             target: 'https://api.freepik.com',
             changeOrigin: true,

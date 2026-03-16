@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { generateSeoBlogArticle, runEditorAction, runQuickAction, humanizeContent, EditorActionType, QuickActionType, SeoArticleResult } from '../services/geminiService';
 import { detectAiContent, AiDetectionResult } from '../services/aiDetector';
 import { useCurrency } from '../services/useCurrency';
-import { generateBlogImage, generateBannerText, ImageMode } from '../services/freepikService';
+import { generateBlogImage, downloadImage, ImageMode } from '../services/freepikService';
 
 // ─── Tooltip ──────────────────────────────────────────────────────────────────
 
@@ -408,7 +408,6 @@ const ContentWriterPanel: React.FC = () => {
   const [imageLoading, setImageLoading] = useState(false);
   const [imageProgress, setImageProgress] = useState(0);
   const [showPrompt, setShowPrompt] = useState(false);
-  const [bannerText, setBannerText] = useState('');
 
   // ── Undo / Redo history ──────────────────────────────────────────────────
   const undoStack = useRef<string[]>([]);
@@ -810,60 +809,6 @@ const ContentWriterPanel: React.FC = () => {
       .trim();
   }, []);
 
-  /** Blob-based image download — works across CDN origins */
-  const downloadImageWithOverlay = useCallback(async (url: string, banner: string, filename: string) => {
-    try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = reject;
-        img.src = url;
-      });
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      // Dark gradient at bottom
-      const gradient = ctx.createLinearGradient(0, canvas.height * 0.5, 0, canvas.height);
-      gradient.addColorStop(0, 'rgba(0,0,0,0)');
-      gradient.addColorStop(1, 'rgba(0,0,0,0.75)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // Banner text
-      ctx.fillStyle = 'white';
-      ctx.font = `bold ${Math.round(canvas.width * 0.035)}px Arial`;
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 8;
-      ctx.fillText(banner, 40, canvas.height - 60);
-      canvas.toBlob((blob) => {
-        if (!blob) { window.open(url, '_blank'); return; }
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
-      }, 'image/jpeg', 0.95);
-    } catch {
-      // Fallback: plain blob download without overlay
-      try {
-        const res = await fetch(url);
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
-      } catch { window.open(url, '_blank'); }
-    }
-  }, []);
 
   /** Generate a blog hero image via Freepik Mystic and inject it above the article */
   const handleGenerateImage = useCallback(async () => {
@@ -878,36 +823,26 @@ const ContentWriterPanel: React.FC = () => {
       const rawContent = editorRef.current?.innerHTML || selectedArticle?.result?.article || '';
       const articleContent = stripFeaturedImage(rawContent);
 
-      const [result, banner] = await Promise.all([
-        generateBlogImage(
-          topic,
-          articleContent,
-          imageMode,
-          imageMode === 'custom' ? customPrompt : undefined,
-          (attempt) => setImageProgress(Math.round((attempt / 30) * 100)),
-        ),
-        generateBannerText(topic),
-      ]);
+      const result = await generateBlogImage(
+        topic,
+        articleContent,
+        imageMode,
+        imageMode === 'custom' ? customPrompt : undefined,
+        (attempt) => setImageProgress(Math.round((attempt / 30) * 100)),
+      );
 
       setImageUrl(result.url);
       setPromptUsed(result.promptUsed);
-      setBannerText(banner);
 
-      // FIX 1: blob download button (no <a download> which opens new tab for cross-origin)
-      // FIX 4: removed "✨ AI Generated Image" subtitle
-      const imgHtml = `<div class="blog-featured-image" style="position: relative; margin-bottom: 28px; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
+      const imgHtml = `<div class="blog-featured-image" data-image-container="true" style="position: relative; margin-bottom: 28px; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.12);">
   <img src="${result.url}" alt="Featured image" style="width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;" />
-  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%);"></div>
-  <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 24px;">
-    <p style="color: white; font-size: 20px; font-weight: 800; margin: 0; line-height: 1.3; text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: -0.3px;">${banner}</p>
-  </div>
-  <div class="img-controls" style="position: absolute; top: 12px; right: 12px; display: flex; gap: 8px;">
-    <button onclick="(async()=>{try{const r=await fetch('${result.url}');const b=await r.blob();const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='blog-image.jpg';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);}catch(e){window.open('${result.url}','_blank');}})()" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Download image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
-    <button onclick="const imgDiv=this.closest('.blog-featured-image');if(imgDiv)imgDiv.remove();" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Remove image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>
+  <div style="position: absolute; top: 12px; right: 12px; display: flex; gap: 8px;">
+    <button data-action="download-image" data-url="${result.url}" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Download image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.5" style="pointer-events: none;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+    <button data-action="delete-image" style="width: 36px; height: 36px; background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" title="Remove image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5" style="pointer-events: none;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>
   </div>
 </div>`;
 
-      // FIX 2: keep existing images — prepend new image to raw content (don't strip others)
+      // Keep existing images — prepend new image to raw content (don't strip others)
       const currentContent = editorRef.current?.innerHTML || '';
       const hasExistingImage = currentContent.includes('class="blog-featured-image"');
       if (editorRef.current) {
@@ -937,6 +872,54 @@ const ContentWriterPanel: React.FC = () => {
     setPromptUsed(null);
     setShowPrompt(false);
   }, [stripFeaturedImage, saveSnapshot, handleEditorInput]);
+
+  /** Event delegation for image buttons injected into the contentEditable article */
+  useEffect(() => {
+    const handleArticleClicks = async (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const btn = target.closest('button, a') as HTMLElement | null;
+      if (!btn) return;
+
+      if (btn.dataset.action === 'download-image') {
+        e.preventDefault();
+        const url = btn.dataset.url;
+        if (!url) return;
+        try {
+          btn.style.opacity = '0.5';
+          btn.style.pointerEvents = 'none';
+          const proxyUrl = `/api/download-image?url=${encodeURIComponent(url)}`;
+          const response = await fetch(proxyUrl);
+          if (!response.ok) throw new Error('Failed');
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.download = 'blog-image.jpg';
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(objectUrl);
+          }, 100);
+        } catch (err) {
+          console.error('Download failed:', err);
+          window.open(url, '_blank');
+        } finally {
+          btn.style.opacity = '1';
+          btn.style.pointerEvents = 'auto';
+        }
+      }
+
+      if (btn.dataset.action === 'delete-image') {
+        e.preventDefault();
+        handleRemoveImage();
+      }
+    };
+
+    document.addEventListener('click', handleArticleClicks);
+    return () => { document.removeEventListener('click', handleArticleClicks); };
+  }, [handleRemoveImage]);
 
   /** Selection bar: rewrite/expand/shorten/simplify selected text only */
   const handleQuickAction = useCallback(async (action: QuickActionType) => {
@@ -2083,7 +2066,7 @@ const ContentWriterPanel: React.FC = () => {
                         Infographic
                       </p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Generates a clean flat design infographic illustration based on your article topic
+                        Generates a beautiful HTML infographic with stats and key points from your article
                       </p>
                     </div>
                     {imageMode === 'infographic' && (
@@ -2153,7 +2136,7 @@ const ContentWriterPanel: React.FC = () => {
                           <img src={imageUrl} alt="AI generated blog image" className="w-full object-cover" />
                           <div className="flex items-center gap-2 p-3 bg-slate-50 border-t border-slate-100">
                             <button
-                              onClick={() => imageUrl && downloadImageWithOverlay(imageUrl, bannerText, 'blog-image.jpg')}
+                              onClick={() => imageUrl && downloadImage(imageUrl, 'blog-image.jpg')}
                               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-white transition-colors"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>

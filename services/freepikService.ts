@@ -10,6 +10,41 @@
  *  4. generateBlogImage()    — orchestrates 1–3, returns { url, promptUsed }
  */
 
+// ─── Download utility ─────────────────────────────────────────────────────────
+
+export async function downloadImage(
+  imageUrl: string,
+  filename: string = 'blog-image.jpg',
+): Promise<void> {
+  try {
+    const proxyUrl = `/api/download-image?url=${encodeURIComponent(imageUrl)}`;
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      if ((err as { hint?: string }).hint?.includes('expired')) {
+        alert('Image URL expired. Please regenerate the image.');
+        return;
+      }
+      throw new Error((err as { error?: string }).error || 'Download failed');
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    }, 100);
+  } catch (err) {
+    console.error('Download error:', err);
+    window.open(imageUrl, '_blank');
+  }
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export type ImageMode = 'featured' | 'infographic' | 'custom';
@@ -40,33 +75,6 @@ async function callGroq(systemPrompt: string, userMessage: string): Promise<stri
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error('Empty response from Groq');
   return text;
-}
-
-// ─── Banner text generator ────────────────────────────────────────────────────
-
-/** Generates a short punchy headline for the image banner overlay. */
-export async function generateBannerText(topic: string): Promise<string> {
-  try {
-    const result = await callGroq(
-      `Generate a short punchy banner text for a blog featured image about this topic.
-
-Rules:
-- Maximum 8 words
-- Bold, catchy, headline style
-- No punctuation except !
-- Like a magazine cover headline
-- Examples:
-  "Master CA in 4 Years Complete Guide"
-  "Top 10 Gaming Laptops That Dominate 2026"
-  "Best CA Coaching Your Success Starts Here"
-
-Output ONLY the banner text. Nothing else.`,
-      `Topic: ${topic}`,
-    );
-    return result.replace(/^["']|["']$/g, '').trim();
-  } catch {
-    return topic;
-  }
 }
 
 // ─── Prompt generator ─────────────────────────────────────────────────────────
@@ -298,19 +306,62 @@ export async function generateBlogImage(
   if (mode === 'custom' && customPrompt?.trim()) {
     finalPrompt = `${customPrompt.trim()}, high quality, professional, blog image, widescreen 16:9, no text`;
   } else if (mode === 'infographic') {
-    const cleanContent = articleHtml.replace(/<[^>]*>/g, '').slice(0, 400);
-    const keyPoints = await callGroq(
-      `Look at this blog content and identify the main visual concept that would make a great infographic illustration.
+    const cleanContent = articleHtml.replace(/<[^>]*>/g, '').slice(0, 800);
 
-Describe 3-4 visual elements/icons that represent the topic — NO text descriptions, only visual concepts.
+    const infographicData = await callGroq(
+      `Analyze this article and extract:
+1. Exactly 3 key stats with values
+2. Exactly 4 key points (short title + one line desc)
 
-Example for CA Course: "graduation cap, accounting calculator, certificate scroll, rupee coin stack"
-Example for Gaming Laptops: "gaming laptop with RGB, GPU chip, fps counter display, cooling fan"
-
-Output ONLY comma separated visual elements. Max 4 elements. No sentences.`,
+Return ONLY valid JSON:
+{
+  "stats": [
+    {"value": "4-5 Years", "label": "Duration"},
+    {"value": "50%", "label": "Min Marks"},
+    {"value": "INR 6-20L", "label": "Avg Salary"}
+  ],
+  "points": [
+    {"title": "Foundation Level", "desc": "First stage with 4 papers"},
+    {"title": "Intermediate Level", "desc": "8 papers in 2 groups"},
+    {"title": "Final Level", "desc": "Advanced 8 paper exam"},
+    {"title": "Article Training", "desc": "3 years practical training"}
+  ]
+}
+Output ONLY JSON. No markdown.`,
       `Topic: ${topic}\nContent: ${cleanContent}`,
     );
-    finalPrompt = `Clean professional infographic illustration about ${topic}, featuring icons of: ${keyPoints}, flat design vector art style, vibrant colors on white background, modern minimal design, circular and grid layout, professional business infographic style, colorful geometric shapes, NO text NO words NO letters NO numbers, clean icons only, high resolution, 8K quality, Adobe Illustrator style flat design`;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let parsedData: any;
+    try {
+      parsedData = JSON.parse(infographicData.replace(/```json|```/g, '').trim());
+    } catch {
+      parsedData = {
+        stats: [
+          { value: 'Step 1', label: 'Foundation' },
+          { value: 'Step 2', label: 'Core' },
+          { value: 'Step 3', label: 'Final' },
+        ],
+        points: [
+          { title: 'Key Point 1', desc: 'Important detail about this topic' },
+          { title: 'Key Point 2', desc: 'Another essential fact to know' },
+          { title: 'Key Point 3', desc: 'Third major insight from article' },
+          { title: 'Key Point 4', desc: 'Final takeaway for the reader' },
+        ],
+      };
+    }
+
+    const statsText = parsedData.stats
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((s: any) => `"${s.value} ${s.label}"`)
+      .join(', ');
+
+    const pointsText = parsedData.points
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((p: any) => `"${p.title}"`)
+      .join(', ');
+
+    finalPrompt = `Professional infographic poster design about "${topic}", purple to blue gradient header section at top with title "${topic}" in large white bold text, below header: 3 stat cards in a row showing ${statsText} in white text on semi-transparent purple rounded cards, below stats: 2x2 grid of white rounded cards each with a red pin emoji icon on left, card titles: ${pointsText}, clean modern UI design style like a dashboard, soft gray background for card section, professional flat design, no photography, sharp crisp text, high resolution, 8K quality, aspect ratio 16:9 widescreen, similar to a Canva infographic template`;
   } else {
     // featured
     finalPrompt = await generateImagePrompt(topic, articleHtml);
