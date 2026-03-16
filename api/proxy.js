@@ -82,7 +82,7 @@ export default async function handler(req, res) {
       }
 
       case 'serpapi': {
-        const params = new URLSearchParams({ ...req.query, api_key: process.env.SERPAPI_KEY })
+        const params = new URLSearchParams({ ...req.query, api_key: process.env.SERPAPI_KEY || process.env.VITE_SERPAPI_KEY })
         params.delete('service')
         const response = await fetch(`https://serpapi.com/search?${params}`)
         const data = await response.json()
