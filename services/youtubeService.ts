@@ -4,7 +4,7 @@
  * Uses the Vite proxy (/api/serpapi/*) to avoid CORS.
  */
 
-const SERPAPI_BASE = '/api/serpapi/search.json';
+const SERPAPI_BASE = '/api/proxy?service=serpapi';
 
 export interface YoutubeVideoData {
   videoId:              string;
@@ -55,8 +55,8 @@ interface SerpApiResponse {
 /** Fallback: search YouTube for the video ID and grab length from video_results list */
 async function fetchLengthFallback(videoId: string, key: string): Promise<string> {
   try {
-    const params = new URLSearchParams({ engine: 'youtube', search_query: videoId, api_key: key });
-    const res = await fetch(`${SERPAPI_BASE}?${params}`);
+    const params = new URLSearchParams({ engine: 'youtube', search_query: videoId });
+    const res = await fetch(`${SERPAPI_BASE}&${params}`);
     if (!res.ok) return '—';
     const data = await res.json() as { video_results?: Array<{ video_id?: string; length?: string }> };
     const match = (data.video_results ?? []).find(r => r.video_id === videoId);
@@ -87,10 +87,9 @@ function resolveThumbnail(raw: string | { static?: string } | undefined, videoId
 }
 
 export async function fetchYoutubeVideo(videoId: string): Promise<YoutubeVideoData> {
-  const key = import.meta.env.VITE_SERPAPI_KEY;
-  const params = new URLSearchParams({ engine: 'youtube_video', v: videoId, api_key: key });
+  const params = new URLSearchParams({ engine: 'youtube_video', v: videoId });
 
-  const res = await fetch(`${SERPAPI_BASE}?${params}`);
+  const res = await fetch(`${SERPAPI_BASE}&${params}`);
   if (!res.ok) throw new Error(`SerpAPI ${res.status}: ${res.statusText}`);
 
   const data = await res.json() as SerpApiResponse;

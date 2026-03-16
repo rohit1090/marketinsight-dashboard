@@ -17,8 +17,12 @@ export async function downloadImage(
   filename: string = 'blog-image.jpg',
 ): Promise<void> {
   try {
-    const proxyUrl = `/api/download-image?url=${encodeURIComponent(imageUrl)}`;
-    const response = await fetch(proxyUrl);
+    const proxyUrl = '/api/proxy?service=upload-image';
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl }),
+    });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       if ((err as { hint?: string }).hint?.includes('expired')) {
@@ -58,7 +62,7 @@ export interface ImageResult {
 
 /** Minimal Groq caller — returns the assistant message text. */
 async function callGroq(systemPrompt: string, userMessage: string): Promise<string> {
-  const res = await fetch('/api/ai/groq', {
+  const res = await fetch('/api/proxy?service=groq', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -204,10 +208,10 @@ export async function createImageTask(prompt: string): Promise<string> {
     filter_nsfw: true,
   };
 
-  const response = await fetch('/api/freepik/v1/ai/mystic', {
+  const response = await fetch('/api/proxy?service=freepik', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ path: '/v1/ai/mystic', ...body }),
   });
 
   if (!response.ok) {
@@ -239,7 +243,7 @@ export async function pollImageTask(
     onProgress?.(i + 1);
 
     try {
-      const response = await fetch(`/api/freepik/v1/ai/mystic/${taskId}`, {
+      const response = await fetch(`/api/proxy?service=freepik-get&path=/v1/ai/mystic/${taskId}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });

@@ -887,8 +887,11 @@ const ContentWriterPanel: React.FC = () => {
         try {
           btn.style.opacity = '0.5';
           btn.style.pointerEvents = 'none';
-          const proxyUrl = `/api/download-image?url=${encodeURIComponent(url)}`;
-          const response = await fetch(proxyUrl);
+          const response = await fetch('/api/proxy?service=upload-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl: url }),
+          });
           if (!response.ok) throw new Error('Failed');
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);

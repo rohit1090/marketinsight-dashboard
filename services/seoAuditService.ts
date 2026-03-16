@@ -17,7 +17,7 @@
  *   - Add Core Web Vitals via PageSpeed Insights API (free, no key needed)
  */
 
-const SERPAPI_BASE = '/api/serpapi/search.json';
+const SERPAPI_BASE = '/api/proxy?service=serpapi';
 
 interface SerpOrganic {
   position:        number;
@@ -41,9 +41,8 @@ export interface AuditReport {
 // --- Internal helpers ---
 
 async function serpSearch(params: Record<string, string>): Promise<SerpResponse> {
-  const key = import.meta.env.VITE_SERPAPI_KEY;
-  const p = new URLSearchParams({ engine: 'google', api_key: key, num: '10', ...params });
-  const res = await fetch(`${SERPAPI_BASE}?${p}`);
+  const p = new URLSearchParams({ engine: 'google', num: '10', ...params });
+  const res = await fetch(`${SERPAPI_BASE}&${p}`);
   if (!res.ok) throw new Error(`SerpAPI ${res.status}: ${res.statusText}`);
   const data = await res.json() as SerpResponse;
   if (data.error) throw new Error(`SerpAPI error: ${data.error}`);

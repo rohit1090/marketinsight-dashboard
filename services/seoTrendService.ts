@@ -23,7 +23,7 @@ import { MarketTrendData, TrendDataPoint, TrendingTopic } from './marketIntelSer
 
 // Use the Vite dev proxy (/api/serpapi → https://serpapi.com) to avoid CORS.
 // SerpAPI blocks direct browser calls; the proxy forwards them server-side.
-const SERPAPI_BASE = '/api/serpapi/search.json';
+const SERPAPI_BASE = '/api/proxy?service=serpapi';
 
 // Maps dashboard channel names → optimized Google search queries
 const CHANNEL_KEYWORDS: Record<string, string> = {
@@ -109,8 +109,7 @@ function toTrendingTopic(result: SerpOrganicResult): TrendingTopic {
 // --- API call ---
 
 async function serpSearch(keyword: string): Promise<SerpOrganicResult[]> {
-  const key = import.meta.env.VITE_SERPAPI_KEY;
-  const url = `${SERPAPI_BASE}?q=${encodeURIComponent(keyword)}&engine=google&api_key=${key}&num=10`;
+  const url = `${SERPAPI_BASE}&q=${encodeURIComponent(keyword)}&engine=google&num=10`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`SerpAPI ${res.status}: ${res.statusText}`);

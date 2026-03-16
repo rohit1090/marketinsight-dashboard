@@ -8,7 +8,7 @@
  *   engine, q, location, google_domain, hl, gl, api_key, num
  */
 
-const SERPAPI_BASE = '/api/serpapi/search.json';
+const SERPAPI_BASE = '/api/proxy?service=serpapi';
 
 // ─── Location config ─────────────────────────────────────────────────────────
 
@@ -215,11 +215,9 @@ function estimateDifficulty(resultCount: number, keyword: string): number {
 // ─── API call ─────────────────────────────────────────────────────────────────
 
 async function serpSearch(keyword: string, cfg: LocationConfig): Promise<SerpOrganic[]> {
-  const key = import.meta.env.VITE_SERPAPI_KEY;
   const params: Record<string, string> = {
     engine:  'google',
     q:       keyword,
-    api_key: key,
     num:     '100',   // fetch up to 100 results so domains ranking beyond #10 are found
   };
   if (cfg.gl)            params.gl            = cfg.gl;
@@ -227,7 +225,7 @@ async function serpSearch(keyword: string, cfg: LocationConfig): Promise<SerpOrg
   if (cfg.google_domain) params.google_domain = cfg.google_domain;
   if (cfg.hl)            params.hl            = cfg.hl;
 
-  const res = await fetch(`${SERPAPI_BASE}?${new URLSearchParams(params)}`);
+  const res = await fetch(`${SERPAPI_BASE}&${new URLSearchParams(params)}`);
   if (!res.ok) throw new Error(`SerpAPI ${res.status}: ${res.statusText}`);
   const data = await res.json() as SerpResponse;
   if (data.error) throw new Error(`SerpAPI error: ${data.error}`);

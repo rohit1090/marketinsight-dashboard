@@ -58,7 +58,7 @@ async function callGemini(
   contents: string,
   config?: Record<string, unknown>,
 ): Promise<GeminiProxyResponse> {
-  const res = await fetch('/api/ai/gemini', {
+  const res = await fetch('/api/proxy?service=gemini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, contents, config }),
@@ -207,7 +207,7 @@ async function callGroq(
     console.log(`[Groq] Trying model: ${model.label}`);
 
     try {
-      const res = await fetch('/api/ai/groq', {
+      const res = await fetch('/api/proxy?service=groq', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: model.id, messages, ...options }),

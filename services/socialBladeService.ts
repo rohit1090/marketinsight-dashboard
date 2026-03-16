@@ -7,7 +7,7 @@
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const SB_BASE = '/api/socialblade';
+const SB_BASE = '/api/proxy?service=socialblade';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
@@ -222,7 +222,7 @@ export async function getYouTubeChannel(
   const cached = await getCache(cacheKey);
   if (cached) return cached as YouTubeChannelData;
 
-  const url = `/api/socialblade/youtube/statistics?query=${cleanQuery.toLowerCase()}&history=${history}&allow-stale=false`;
+  const url = `${SB_BASE}&sbpath=/youtube/statistics&query=${cleanQuery.toLowerCase()}&history=${history}&allow-stale=false`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Social Blade API ${res.status}: ${res.statusText}`);
 
@@ -276,7 +276,7 @@ export async function getInstagramProfile(
   const cached = await getCache(cacheKey);
   if (cached) return cached as InstagramProfileData;
 
-  const url = `/api/socialblade/instagram/statistics?query=${cleanQuery.toLowerCase()}&history=${history}&allow-stale=false`;
+  const url = `${SB_BASE}&sbpath=/instagram/statistics&query=${cleanQuery.toLowerCase()}&history=${history}&allow-stale=false`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Social Blade API ${res.status}: ${res.statusText}`);
 
