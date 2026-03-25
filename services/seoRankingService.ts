@@ -1,14 +1,9 @@
 /**
  * seoRankingService.ts
  *
- * Fetches real Google SERP data for a keyword+location via SerpAPI and maps
+ * Fetches real Google SERP data for a keyword+location via DataForSEO and maps
  * it to the KeywordData shape used by SeoSuitePanel's Rankings table.
- *
- * Uses full SerpAPI location parameters:
- *   engine, q, location, google_domain, hl, gl, api_key, num
  */
-
-const SERPAPI_BASE = '/api/proxy?service=serpapi';
 
 // ─── Location config ─────────────────────────────────────────────────────────
 
@@ -185,11 +180,6 @@ interface SerpOrganic {
   snippet?: string;
 }
 
-interface SerpResponse {
-  organic_results?: SerpOrganic[];
-  error?: string;
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractDomain(url: string): string {
@@ -212,24 +202,38 @@ function estimateDifficulty(resultCount: number, keyword: string): number {
   return Math.min(base + (keyword.length % 20), 95);
 }
 
-// ─── API call ─────────────────────────────────────────────────────────────────
+// ─── API call (DataForSEO) ────────────────────────────────────────────────────
 
 async function serpSearch(keyword: string, cfg: LocationConfig): Promise<SerpOrganic[]> {
-  const params: Record<string, string> = {
-    engine:  'google',
-    q:       keyword,
-    num:     '100',   // fetch up to 100 results so domains ranking beyond #10 are found
-  };
-  if (cfg.gl)            params.gl            = cfg.gl;
-  if (cfg.location)      params.location      = cfg.location;
-  if (cfg.google_domain) params.google_domain = cfg.google_domain;
-  if (cfg.hl)            params.hl            = cfg.hl;
+  const res = await fetch('/api/proxy?service=dataforseo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      endpoint: '/v3/serp/google/organic/live/regular',
+      payload: {
+        keyword,
+        location_name: cfg.location || 'India',
+        language_name: 'English',
+        device: 'desktop',
+        os: 'windows',
+        depth: 100,
+      },
+    }),
+  });
 
-  const res = await fetch(`${SERPAPI_BASE}&${new URLSearchParams(params)}`);
-  if (!res.ok) throw new Error(`SerpAPI ${res.status}: ${res.statusText}`);
-  const data = await res.json() as SerpResponse;
-  if (data.error) throw new Error(`SerpAPI error: ${data.error}`);
-  return data.organic_results ?? [];
+  if (!res.ok) throw new Error(`DataForSEO ${res.status}: ${res.statusText}`);
+  const tasks = await res.json();
+  if (tasks.error) throw new Error(`DataForSEO error: ${tasks.error}`);
+
+  const items: any[] = tasks[0]?.result?.[0]?.items || [];
+  return items
+    .filter((item: any) => item.type === 'organic')
+    .map((item: any) => ({
+      position: item.rank_absolute ?? item.rank_group ?? 0,
+      title:    item.title ?? '',
+      link:     item.url ?? '',
+      snippet:  item.description ?? '',
+    }));
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

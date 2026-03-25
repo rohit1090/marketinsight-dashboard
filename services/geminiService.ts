@@ -163,13 +163,13 @@ interface GroqModel {
 }
 
 const GROQ_MODELS: GroqModel[] = [
-  { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout',   tpm: 30000, quality: 'high'    },
   { id: 'llama-3.3-70b-versatile',                   label: 'Llama 3.3 70B',   tpm: 12000, quality: 'highest' },
   { id: 'moonshotai/kimi-k2-instruct',               label: 'Kimi K2',         tpm: 10000, quality: 'high'    },
   { id: 'openai/gpt-oss-120b',                       label: 'GPT OSS 120B',    tpm:  8000, quality: 'high'    },
   { id: 'openai/gpt-oss-20b',                        label: 'GPT OSS 20B',     tpm:  8000, quality: 'medium'  },
   { id: 'qwen/qwen3-32b',                            label: 'Qwen 3 32B',      tpm:  6000, quality: 'high'    },
   { id: 'llama-3.1-8b-instant',                      label: 'Llama 3.1 8B',    tpm:  6000, quality: 'medium'  },
+  { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout',   tpm: 30000, quality: 'high'    },
 ];
 
 // Persists across calls within the same page session

@@ -2,6 +2,8 @@
 // Fetches top Google results for a topic, scrapes competitor headings,
 // and returns an aggregated list for AI-assisted SEO outline generation.
 
+import { getOrganicItems, DFS_DEFAULT_LOCATION } from './researchCache';
+
 export interface CompetitorAnalysis {
   competitorHeadings: string[];
   competitorTitles: string[];
@@ -18,12 +20,26 @@ async function post<T>(endpoint: string, body: Record<string, unknown>): Promise
   return data as T;
 }
 
+async function fetchSerpResults(topic: string): Promise<{ title: string; link: string; snippet: string }[]> {
+  // Uses shared getOrganicItems — shares cache + in-flight guard with researchService.ts
+  try {
+    const items = await getOrganicItems(topic, DFS_DEFAULT_LOCATION, 5, 'analyzeCompetitors/fetchSerpResults');
+    return items
+      .filter((item: any) => item.type === 'organic')
+      .slice(0, 5)
+      .map((item: any) => ({ title: item.title ?? '', link: item.url ?? '', snippet: item.description ?? '' }));
+  } catch (err) {
+    console.warn('[Research] DataForSEO failed for competitor SERP, falling back to SerpAPI:', err);
+    const { results } = await post<{ results: { title: string; link: string; snippet: string }[] }>(
+      '/api/research/serp-results', { topic },
+    );
+    return results ?? [];
+  }
+}
+
 export async function analyzeCompetitors(topic: string): Promise<CompetitorAnalysis> {
-  // Step 1: Fetch top 10 Google organic results for the topic
-  const { results } = await post<{ results: { title: string; link: string; snippet: string }[] }>(
-    '/api/research/serp-results',
-    { topic },
-  );
+  // Step 1: Fetch top 5 Google organic results (DataForSEO primary, SerpAPI fallback)
+  const results = await fetchSerpResults(topic);
 
   if (!results?.length) return { competitorHeadings: [], competitorTitles: [] };
 

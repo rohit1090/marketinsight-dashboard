@@ -8,6 +8,7 @@ import AiInsightsPanel from './components/AiInsightsPanel';
 import MarketIntelPanel from './components/MarketIntelPanel';
 import SettingsPanel from './components/SettingsPanel';
 import SeoSuitePanel from './components/SeoSuitePanel';
+import SiteMetricsPanel from './components/SiteMetricsPanel';
 import SocialHubPanel from './components/SocialHubPanel';
 import WorkflowPanel from './components/WorkflowPanel';
 import AgentHubPanel from './components/AgentHubPanel';
@@ -17,9 +18,7 @@ import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
 import ProfileModal from './components/ProfileModal';
 import { ViewMode, DateRange } from './types';
-import { MOCK_DASHBOARD_DATA, CHANNELS } from './constants';
-import DateRangePicker from './components/DateRangePicker';
-import { format, subDays } from 'date-fns';
+import { MOCK_DASHBOARD_DATA } from './constants';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './firebase';
 
@@ -36,12 +35,12 @@ const App: React.FC = () => {
       ? (saved as ViewMode)
       : ViewMode.OVERVIEW;
   });
-  const [selectedChannel, setSelectedChannel] = useState<string>('All Channels');
-  const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
-    endDate: format(new Date(), 'yyyy-MM-dd'),
-    preset: 'Last 30 Days'
-  });
+  const selectedChannel = 'Digital Marketing';
+  const dateRange: DateRange = {
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    endDate: new Date().toISOString().slice(0, 10),
+    preset: 'Last 30 Days',
+  };
 
   useEffect(() => {
     console.log('🔐 Auth: Setting up auth state listener...');
@@ -181,6 +180,8 @@ const App: React.FC = () => {
         );
       case ViewMode.SEO_SUITE:
         return <SeoSuitePanel dateRange={dateRange} />;
+      case ViewMode.SITE_METRICS:
+        return <SiteMetricsPanel />;
       case ViewMode.CONTENT_WRITER:
         return <ContentWriterPanel />;
       case ViewMode.SOCIAL_HUB:
@@ -190,7 +191,7 @@ const App: React.FC = () => {
       case ViewMode.COMPETITORS:
         return <CompetitorInsights competitors={MOCK_DASHBOARD_DATA.competitors} />;
       case ViewMode.MARKET_INTEL:
-        return <MarketIntelPanel channel={selectedChannel === 'All Channels' ? 'Digital Marketing' : selectedChannel} />;
+        return <MarketIntelPanel channel={selectedChannel} />;
       case ViewMode.AI_STRATEGY:
         return <AgentHubPanel />;
       case ViewMode.SETTINGS:
@@ -215,27 +216,14 @@ const App: React.FC = () => {
       />
       
       <main className="flex-1 overflow-y-auto px-8 pt-8 pb-5 lg:px-12 lg:pt-10 lg:pb-5">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-          <div>
+        <header className="flex items-center justify-between gap-6 mb-10">
+          {currentView !== ViewMode.SITE_METRICS && (
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight capitalize">
-              {currentView.replace('_', ' ')}
+              {currentView.replace(/_/g, ' ')}
             </h1>
-            <p className="text-slate-500 mt-1 font-medium">
-              {selectedChannel} • {dateRange.preset === 'Custom' 
-                ? `${format(new Date(dateRange.startDate), 'MMM d')} - ${format(new Date(dateRange.endDate), 'MMM d, yyyy')}`
-                : dateRange.preset}
-            </p>
-          </div>
+          )}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <DateRangePicker value={dateRange} onChange={setDateRange} />
-            <select 
-              value={selectedChannel}
-              onChange={(e) => setSelectedChannel(e.target.value)}
-              className="bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 block p-2.5 shadow-sm transition-all outline-none"
-            >
-              {CHANNELS.map(ch => <option key={ch} value={ch}>{ch}</option>)}
-            </select>
+          <div className="flex items-center gap-3 ml-auto">
             <button
               onClick={() => setIsProfileOpen(true)}
               className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 pl-2 pr-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
@@ -260,7 +248,7 @@ const App: React.FC = () => {
               </div>
               {auth.currentUser?.displayName?.split(' ')[0] || 'Profile'}
             </button>
-            <button 
+            <button
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-100 active:scale-95 flex items-center gap-2 whitespace-nowrap"
               onClick={() => alert('Exporting report...')}
             >
