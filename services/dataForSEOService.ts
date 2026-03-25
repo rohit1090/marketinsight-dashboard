@@ -804,6 +804,57 @@ export async function getGoogleAdsData(
   return promise
 }
 
+// ─── Function 2a: Keyword History (monthly search volume, cached 7 days) ─────
+
+export interface KeywordHistoryPoint {
+  date: string        // "YYYY-MM"
+  searchVolume: number
+}
+
+export async function getKeywordHistory(
+  keyword: string,
+  locationCode = 2356,
+): Promise<KeywordHistoryPoint[]> {
+  const cacheKey = `kw_hist_${keyword.trim().toLowerCase().replace(/\s+/g, '_')}_${locationCode}`
+
+  try {
+    const cachedDoc = await getDoc(doc(db, 'dfsCache', cacheKey))
+    if (cachedDoc.exists()) {
+      const cached = cachedDoc.data()
+      const ageMs = Date.now() - (cached.cachedAt?.toMillis?.() ?? 0)
+      if (ageMs < 7 * 24 * 60 * 60 * 1000) {
+        console.log('[DFS KeywordHistory] Firestore cache hit:', keyword)
+        return cached.items as KeywordHistoryPoint[]
+      }
+    }
+  } catch { /* Firestore unavailable — proceed to API */ }
+
+  const res = await fetch('/api/proxy?service=dataforseo-keyword-history', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([{ keywords: [keyword], location_code: locationCode, language_code: 'en' }]),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Keyword history HTTP ${res.status}`)
+
+  // result[0] is an object keyed by keyword string
+  const kwData = data?.[keyword] ?? data?.[Object.keys(data ?? {})[0]] ?? null
+  const monthly: any[] = kwData?.keyword_info?.monthly_searches ?? kwData?.monthly_searches ?? []
+
+  const items: KeywordHistoryPoint[] = monthly
+    .map((m: any) => ({
+      date: `${m.year}-${String(m.month).padStart(2, '0')}`,
+      searchVolume: m.search_volume ?? 0,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  if (items.length > 0) {
+    try { await setDoc(doc(db, 'dfsCache', cacheKey), { items, cachedAt: new Date() }) }
+    catch { /* non-critical */ }
+  }
+  return items
+}
+
 // ─── Function 2b: Ranked Keywords (live, cached 7 days) ──────────────────────
 
 export interface RankedKeyword {
@@ -840,6 +891,7 @@ export interface RankedKeyword {
     quarterly: number | null
     yearly: number | null
   } | null
+  monthlySearches: { year: number; month: number; searchVolume: number }[]
   serpFeatures: string[]
   itemType: string
 }
@@ -983,6 +1035,9 @@ export async function getRankedKeywords(
           quarterly: kwInfo.search_volume_trend.quarterly ?? null,
           yearly:    kwInfo.search_volume_trend.yearly    ?? null,
         } : null,
+        monthlySearches: (kwInfo?.monthly_searches ?? []).map((m: any) => ({
+          year: m.year, month: m.month, searchVolume: m.search_volume ?? 0,
+        })),
         serpFeatures: item.ranked_serp_element?.serp_item_types ?? [],
         itemType:     serpItem?.type ?? 'organic',
       }

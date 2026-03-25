@@ -290,6 +290,32 @@ export default async function handler(req, res) {
         return res.status(200).json(data.tasks?.[0]?.result ?? [])
       }
 
+      // ── DataForSEO keyword history (monthly search volume via keyword_overview) ──
+      case 'dataforseo-keyword-history': {
+        if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
+          return res.status(500).json({ error: 'DataForSEO credentials missing' })
+        }
+        const kwHistCreds = Buffer.from(
+          `${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`
+        ).toString('base64')
+        const kwHistRes = await fetch(
+          'https://api.dataforseo.com/v3/dataforseo_labs/google/keyword_overview/live',
+          {
+            method: 'POST',
+            headers: { 'Authorization': `Basic ${kwHistCreds}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(req.body),
+          }
+        )
+        const kwHistText = await kwHistRes.text()
+        let kwHistData
+        try { kwHistData = JSON.parse(kwHistText) }
+        catch { return res.status(500).json({ error: 'Invalid JSON', raw: kwHistText.slice(0, 200) }) }
+        if (kwHistData.status_code === 40101) return res.status(401).json({ error: 'DataForSEO: Invalid credentials' })
+        if (kwHistData.status_code !== 20000) return res.status(400).json({ error: kwHistData.status_message || 'DataForSEO error', status_code: kwHistData.status_code })
+        console.log('[keyword-history] result keys:', Object.keys(kwHistData.tasks?.[0]?.result?.[0] ?? {}).slice(0, 3))
+        return res.status(200).json(kwHistData.tasks?.[0]?.result?.[0] ?? null)
+      }
+
       // ── DataForSEO SERP endpoints (organic / maps / shopping) ─────────────────
       case 'dataforseo-serp-organic':
       case 'dataforseo-serp-maps':

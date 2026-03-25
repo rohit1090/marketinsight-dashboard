@@ -3,6 +3,7 @@ import {
   getRankedKeywords, RankedKeyword,
   RankedKeywordsMetrics, RankedKeywordsMetricSection,
   getHistoricalRankData, DomainRankHistoryPoint,
+  getKeywordHistory, KeywordHistoryPoint,
 } from '../services/dataForSEOService';
 import {
   AreaChart, Area, BarChart, Bar, Cell,
@@ -278,8 +279,14 @@ const SiteMetricsPanel: React.FC = () => {
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
   const colsMenuRef = useRef<HTMLDivElement>(null);
 
-  // Expanded row index
+  // Expanded row index + its chart time range
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [expandedTimeRange, setExpandedTimeRange] = useState<'3M'|'6M'|'1Y'|'2Y'|'all'>('all');
+
+  // Keyword history — fetched on expand, cached in memory across row changes
+  const kwHistoryCache = useRef<Map<string, KeywordHistoryPoint[]>>(new Map());
+  const [kwHistoryData, setKwHistoryData] = useState<KeywordHistoryPoint[]>([]);
+  const [kwHistoryLoading, setKwHistoryLoading] = useState(false);
 
   // Section 1 & 2 — metrics from ranked_keywords response
   const [kwMetrics, setKwMetrics] = useState<RankedKeywordsMetrics | null>(null);
@@ -402,6 +409,23 @@ const SiteMetricsPanel: React.FC = () => {
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
+  // Fetch keyword search volume history when a row is expanded
+  useEffect(() => {
+    if (expandedRow === null) { setKwHistoryData([]); return; }
+    const keyword = filtered[expandedRow]?.keyword;
+    if (!keyword) return;
+    if (kwHistoryCache.current.has(keyword)) {
+      setKwHistoryData(kwHistoryCache.current.get(keyword)!);
+      return;
+    }
+    setKwHistoryLoading(true);
+    setKwHistoryData([]);
+    getKeywordHistory(keyword)
+      .then(data => { kwHistoryCache.current.set(keyword, data); setKwHistoryData(data); })
+      .catch(err => console.error('[SiteMetrics] Keyword history failed:', err))
+      .finally(() => setKwHistoryLoading(false));
+  }, [expandedRow]); // eslint-disable-line
+
   const toggleCol = (key: ColKey) => {
     setVisibleCols(prev => {
       const next = { ...prev, [key]: !prev[key] };
@@ -513,6 +537,21 @@ const SiteMetricsPanel: React.FC = () => {
     const from = cutoff.get(historyTimeRange)!;
     return historyData.filter(p => new Date(p.date) >= from);
   }, [historyData, historyTimeRange]);
+
+  // Search volume history for the expanded keyword — sourced from API call
+  const MONTH_LABELS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const expandedMonthlyData = useMemo(() => {
+    if (!kwHistoryData.length) return [];
+    const now = new Date();
+    const monthsBack: Record<string, number> = { '3M': 3, '6M': 6, '1Y': 12, '2Y': 24, 'all': 999 };
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - monthsBack[expandedTimeRange], 1);
+    return kwHistoryData
+      .filter(p => new Date(p.date) >= cutoff)
+      .map(p => {
+        const [y, m] = p.date.split('-');
+        return { date: `${MONTH_LABELS[+m]} ${y.slice(2)}`, volume: p.searchVolume };
+      });
+  }, [kwHistoryData, expandedTimeRange]);
 
   // Large card — Organic / Paid
   const MetricCard = ({ title, m, accent = 'cyan' }: { title: string; m: RankedKeywordsMetricSection | null; accent?: string }) => (
@@ -1008,7 +1047,7 @@ const SiteMetricsPanel: React.FC = () => {
                   <React.Fragment key={i}>
                     <tr
                       className={`group transition-colors cursor-pointer ${selected.has(i) ? 'bg-indigo-50/60' : isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
-                      onClick={() => setExpandedRow(isExpanded ? null : i)}
+                      onClick={() => { setExpandedRow(isExpanded ? null : i); setExpandedTimeRange('all'); }}
                     >
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <input type="checkbox" checked={selected.has(i)} onChange={() => toggleRow(i)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
@@ -1109,68 +1148,66 @@ const SiteMetricsPanel: React.FC = () => {
                     {/* ── Expanded detail panel ── */}
                     {isExpanded && (
                       <tr className="bg-slate-50/80">
-                        <td colSpan={99} className="px-6 py-4">
-                          <div className="grid grid-cols-1 gap-4">
+                        <td colSpan={99} className="px-8 py-6">
+                          <div className="space-y-5">
 
-                            {/* Row 1: URL backlinks */}
-                            <div>
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Backlinks for this URL</p>
-                              {row.backlinks ? (
-                                <div className="flex gap-6">
-                                  <div>
-                                    <p className="text-[10px] text-slate-400 uppercase">Total Backlinks</p>
-                                    <p className="text-sm font-bold text-slate-700">{row.backlinks.count != null ? fmtNum(row.backlinks.count) : '—'}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] text-slate-400 uppercase">Referring Domains</p>
-                                    <p className="text-sm font-bold text-slate-700">{row.backlinks.referringDomains != null ? fmtNum(row.backlinks.referringDomains) : '—'}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] text-slate-400 uppercase">Dofollow</p>
-                                    <p className="text-sm font-bold text-slate-700">{row.backlinks.dofollow != null ? fmtNum(row.backlinks.dofollow) : '—'}</p>
-                                  </div>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-slate-400 italic">No backlink data for this URL</p>
-                              )}
-                            </div>
-
-                            {/* Row 2: Avg backlinks for SERP */}
-                            {row.avgBacklinks && (
+                            {/* ── Backlinks for this URL ── */}
+                            {row.backlinks && (
                               <div>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Avg Backlinks (SERP Competition)</p>
-                                <div className="flex gap-6">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Backlinks for this URL</p>
+                                <div className="flex gap-10">
                                   <div>
-                                    <p className="text-[10px] text-slate-400 uppercase">Avg Backlinks</p>
-                                    <p className="text-sm font-bold text-slate-700">{row.avgBacklinks.count != null ? fmtNum(row.avgBacklinks.count) : '—'}</p>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Total Backlinks</p>
+                                    <p className="text-sm font-bold text-slate-800">{row.backlinks.count != null ? fmtNum(row.backlinks.count) : '—'}</p>
                                   </div>
                                   <div>
-                                    <p className="text-[10px] text-slate-400 uppercase">Avg Ref Domains</p>
-                                    <p className="text-sm font-bold text-slate-700">{row.avgBacklinks.referringDomains != null ? fmtNum(row.avgBacklinks.referringDomains) : '—'}</p>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Referring Domains</p>
+                                    <p className="text-sm font-bold text-slate-800">{row.backlinks.referringDomains != null ? fmtNum(row.backlinks.referringDomains) : '—'}</p>
                                   </div>
                                   <div>
-                                    <p className="text-[10px] text-slate-400 uppercase">Domain Rank</p>
-                                    <p className="text-sm font-bold text-slate-700">{row.avgBacklinks.rank != null ? Math.round(row.avgBacklinks.rank) : '—'}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] text-slate-400 uppercase">Main Domain Rank</p>
-                                    <p className="text-sm font-bold text-slate-700">{row.avgBacklinks.mainDomainRank != null ? Math.round(row.avgBacklinks.mainDomainRank) : '—'}</p>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Dofollow</p>
+                                    <p className="text-sm font-bold text-slate-800">{row.backlinks.dofollow != null ? fmtNum(row.backlinks.dofollow) : '—'}</p>
                                   </div>
                                 </div>
                               </div>
                             )}
 
-                            {/* Row 3: Volume trend */}
+                            {/* ── Avg Backlinks (SERP Competition) ── */}
+                            {row.avgBacklinks && (
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Avg Backlinks (SERP Competition)</p>
+                                <div className="flex gap-10">
+                                  <div>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Avg Backlinks</p>
+                                    <p className="text-sm font-bold text-slate-800">{row.avgBacklinks.count != null ? fmtNum(row.avgBacklinks.count) : '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Avg Ref Domains</p>
+                                    <p className="text-sm font-bold text-slate-800">{row.avgBacklinks.referringDomains != null ? fmtNum(row.avgBacklinks.referringDomains) : '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Domain Rank</p>
+                                    <p className="text-sm font-bold text-slate-800">{row.avgBacklinks.rank != null ? Math.round(row.avgBacklinks.rank) : '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Main Domain Rank</p>
+                                    <p className="text-sm font-bold text-slate-800">{row.avgBacklinks.mainDomainRank != null ? Math.round(row.avgBacklinks.mainDomainRank) : '—'}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ── Volume Trend ── */}
                             {row.volumeTrend && (
                               <div>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Volume Trend</p>
-                                <div className="flex gap-6">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Volume Trend</p>
+                                <div className="flex gap-10">
                                   {(['monthly', 'quarterly', 'yearly'] as const).map(period => {
                                     const v = row.volumeTrend![period];
                                     return (
                                       <div key={period}>
-                                        <p className="text-[10px] text-slate-400 uppercase">{period}</p>
-                                        <p className={`text-sm font-bold ${v == null ? 'text-slate-400' : v > 0 ? 'text-green-600' : v < 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                                        <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1 capitalize">{period}</p>
+                                        <p className={`text-sm font-bold ${v == null ? 'text-slate-400' : v > 0 ? 'text-green-600' : v < 0 ? 'text-red-500' : 'text-slate-500'}`}>
                                           {v != null ? `${v > 0 ? '+' : ''}${v}%` : '—'}
                                         </p>
                                       </div>
@@ -1179,6 +1216,66 @@ const SiteMetricsPanel: React.FC = () => {
                                 </div>
                               </div>
                             )}
+
+                            {/* ── Historical Metrics Chart ── */}
+                            <div className="pt-4 border-t border-slate-200">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <h4 className="text-sm font-bold text-slate-800">Historical Metrics</h4>
+                                  <div className="flex gap-1">
+                                    <span className="px-3 py-0.5 rounded-md text-xs font-semibold bg-slate-900 text-white">Volume</span>
+                                  </div>
+                                </div>
+                                <div className="flex gap-1">
+                                  {(['3M','6M','1Y','2Y','all'] as const).map(r => (
+                                    <button key={r} onClick={() => setExpandedTimeRange(r)}
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded transition-all ${expandedTimeRange === r ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>
+                                      {r === 'all' ? 'All time' : r}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Legend */}
+                              <div className="flex gap-4 mb-2 text-xs">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-3 h-0.5 rounded inline-block" style={{ backgroundColor: '#6366f1' }} />
+                                  <span className="text-slate-600 font-medium">Search Volume</span>
+                                </span>
+                              </div>
+
+                              {kwHistoryLoading ? (
+                                <div className="h-44 flex items-center justify-center gap-2">
+                                  <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                                  <span className="text-xs text-slate-400">Loading history…</span>
+                                </div>
+                              ) : expandedMonthlyData.length === 0 ? (
+                                <div className="h-44 flex items-center justify-center">
+                                  <p className="text-xs text-slate-400">No historical data available</p>
+                                </div>
+                              ) : (
+                                <ResponsiveContainer width="100%" height={180}>
+                                  <AreaChart data={expandedMonthlyData} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+                                    <defs>
+                                      <linearGradient id="gKwVol" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.25} />
+                                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}    />
+                                      </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                    <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                                    <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={v => fmtNum(v)} />
+                                    <Tooltip
+                                      contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8, fontSize: 12 }}
+                                      labelStyle={{ color: '#94a3b8' }}
+                                      formatter={(v: number) => [fmtNum(v), 'Search Volume']}
+                                    />
+                                    <Area type="monotone" dataKey="volume" name="Search Volume" stroke="#6366f1" strokeWidth={2} fill="url(#gKwVol)" dot={false} />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              )}
+                            </div>
+
                           </div>
                         </td>
                       </tr>
